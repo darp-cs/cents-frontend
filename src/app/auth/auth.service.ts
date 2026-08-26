@@ -1,18 +1,20 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { catchError, finalize, firstValueFrom, map, of, tap, throwError } from 'rxjs';
+import { catchError, finalize, firstValueFrom, map, of, switchMap, tap, throwError } from 'rxjs';
 import { API_BASE_URL } from '../core/api-config';
 
 export interface AuthUser {
   id: string;
   email: string;
-  name: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  is_verified: boolean;
 }
 
-interface AuthResponse {
-  token: string;
-  user: AuthUser;
+interface TokenResponse {
+  access_token: string;
+  token_type: string;
 }
 
 interface LoginPayload {
@@ -47,9 +49,7 @@ export class AuthService {
     this.authError.set(null);
     this.isSubmitting.set(true);
 
-    return this.http.post<AuthResponse>(`${API_BASE_URL}/auth/login`, payload).pipe(
-      tap((response) => this.setSession(response)),
-      map((response) => response.user),
+    return this.loginWithPassword(payload).pipe(
       catchError((error) => {
         this.authError.set(this.toErrorMessage(error, 'Login failed.'));
         return throwError(() => error);
@@ -62,15 +62,19 @@ export class AuthService {
     this.authError.set(null);
     this.isSubmitting.set(true);
 
-    return this.http.post<AuthResponse>(`${API_BASE_URL}/auth/register`, payload).pipe(
-      tap((response) => this.setSession(response)),
-      map((response) => response.user),
-      catchError((error) => {
-        this.authError.set(this.toErrorMessage(error, 'Registration failed.'));
-        return throwError(() => error);
-      }),
-      finalize(() => this.isSubmitting.set(false))
-    );
+    return this.http
+      .post<AuthUser>(`${API_BASE_URL}/auth/register`, {
+        email: payload.email,
+        password: payload.password,
+      })
+      .pipe(
+        switchMap(() => this.loginWithPassword({ email: payload.email, password: payload.password })),
+        catchError((error) => {
+          this.authError.set(this.toErrorMessage(error, 'Registration failed.'));
+          return throwError(() => error);
+        }),
+        finalize(() => this.isSubmitting.set(false))
+      );
   }
 
   logout() {
@@ -86,9 +90,15 @@ export class AuthService {
   silentCheck() {
     this.isCheckingSession.set(true);
 
+    const token = this.tokenSignal();
+    if (!token) {
+      this.isCheckingSession.set(false);
+      return Promise.resolve(undefined);
+    }
+
     return firstValueFrom(
-      this.http.get<AuthResponse>(`${API_BASE_URL}/auth/session`, { withCredentials: true }).pipe(
-        tap((response) => this.setSession(response)),
+      this.http.get<AuthUser>(`${API_BASE_URL}/users/me`).pipe(
+        tap((user) => this.userSignal.set(user)),
         map(() => undefined),
         catchError(() => {
           this.clearSession();
@@ -99,9 +109,22 @@ export class AuthService {
     );
   }
 
-  private setSession(response: AuthResponse) {
-    this.tokenSignal.set(response.token);
-    this.userSignal.set(response.user);
+  private loginWithPassword(payload: LoginPayload) {
+    const formBody = new URLSearchParams();
+    formBody.set('username', payload.email);
+    formBody.set('password', payload.password);
+
+    return this.http
+      .post<TokenResponse>(`${API_BASE_URL}/auth/jwt/login`, formBody.toString(), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      })
+      .pipe(
+        tap((response) => this.tokenSignal.set(response.access_token)),
+        switchMap(() => this.http.get<AuthUser>(`${API_BASE_URL}/users/me`)),
+        tap((user) => this.userSignal.set(user))
+      );
   }
 
   private clearSession() {
@@ -111,9 +134,13 @@ export class AuthService {
 
   private toErrorMessage(error: unknown, fallback: string) {
     if (typeof error === 'object' && error !== null && 'error' in error) {
-      const payload = (error as { error?: { message?: string } }).error;
+      const payload = (error as { error?: { message?: string; detail?: string } }).error;
       if (payload?.message) {
         return payload.message;
+      }
+
+      if (payload?.detail) {
+        return payload.detail;
       }
     }
 
