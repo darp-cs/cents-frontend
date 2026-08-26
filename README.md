@@ -118,7 +118,7 @@ flowchart LR
 
 The commands below are cross-platform and work in:
 
-- Windows: PowerShell or Command Prompt
+- Windows: Command Prompt (cmd)
 - macOS/Linux: Terminal (bash/zsh)
 
 1. Run automatic setup.
