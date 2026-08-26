@@ -116,6 +116,44 @@ flowchart LR
 
 ## Local Setup
 
+The commands below are cross-platform and work in:
+
+- Windows: PowerShell or Command Prompt
+- macOS/Linux: Terminal (bash/zsh)
+
+1. Run automatic setup.
+
+```bash
+npm run setup
+```
+
+This command will:
+
+- Install dependencies with npm ci (or npm install if no lockfile exists)
+- Ensure environment files exist and include apiBaseUrl
+- Print the next steps to start the app
+
+2. (Optional) Update backend URL for local development.
+
+- File: src/environments/environment.development.ts
+- Default: http://localhost:8000
+
+3. Start the app.
+
+```bash
+npm run start
+```
+
+4. Open http://localhost:4200
+
+## Alternative Start Commands
+
+- Standard development start: npm run start
+- Expose dev server on LAN: npm run start:host
+- Serve production configuration locally: npm run start:prod
+
+## Manual Setup (If You Prefer)
+
 1. Install dependencies.
 
 ```bash
@@ -157,7 +195,10 @@ export const environment = {
 
 ## Commands
 
+- Automated setup: npm run setup
 - Start dev server: npm run start
+- Start dev server on LAN: npm run start:host
+- Start with production configuration: npm run start:prod
 - Build: npm run build
 - Unit tests: npm run test
 
@@ -170,7 +211,7 @@ export const environment = {
 
 ## First Day Checklist For A New Developer
 
-1. Run npm install and npm run start.
+1. Run npm run setup, then npm run start.
 2. Verify environment.development.ts points to a reachable backend.
 3. Test auth, conversation CRUD, chat stream, and document upload paths.
 4. Confirm 401 behavior redirects to /login.
