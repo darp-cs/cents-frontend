@@ -1,0 +1,30 @@
+<aside class="conversation-sidebar">
+  <div class="sidebar-header">
+    <h2>Conversations</h2>
+    <button type="button" (click)="createConversation()" [disabled]="isMutating()">New</button>
+  </div>
+
+  @if (isLoading()) {
+    <p>Loading conversations...</p>
+  }
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <ul>
+    @for (conversation of conversations(); track conversation.id) {
+      <li [class.active]="activeConversationId() === conversation.id">
+        <button type="button" class="conversation-item" (click)="selectConversation(conversation.id)">
+          <span>{{ conversation.title }}</span>
+          <small>{{ conversation.updated_at | date: 'short' }}</small>
+        </button>
+
+        <div class="actions">
+          <button type="button" (click)="renameConversation(conversation.id, conversation.title)">Rename</button>
+          <button type="button" (click)="deleteConversation(conversation.id)">Delete</button>
+        </div>
+      </li>
+    }
+  </ul>
+</aside>

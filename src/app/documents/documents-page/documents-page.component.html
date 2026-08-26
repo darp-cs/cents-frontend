@@ -1,0 +1,29 @@
+<main class="documents-page">
+  <header>
+    <h1>Documents</h1>
+    <a routerLink="/chat">Back to chat</a>
+  </header>
+
+  <app-document-upload />
+
+  <section class="document-list">
+    <h2>Uploaded Documents</h2>
+
+    @if (isListing()) {
+      <p>Loading documents...</p>
+    }
+
+    @if (listError()) {
+      <p class="error">{{ listError() }}</p>
+    }
+
+    <ul>
+      @for (document of documents(); track document.id) {
+        <li>
+          <span>{{ document.name }}</span>
+          <small>{{ document.created_at | date: 'short' }}</small>
+        </li>
+      }
+    </ul>
+  </section>
+</main>

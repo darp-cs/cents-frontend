@@ -1,0 +1,42 @@
+<section class="chat-window">
+  <header>
+    <h2>{{ activeConversation()?.title ?? 'Select a conversation' }}</h2>
+  </header>
+
+  <div class="messages">
+    @for (message of messages(); track message.id) {
+      <article [class.user]="message.role === 'user'" [class.assistant]="message.role === 'assistant'">
+        <strong>{{ message.role === 'user' ? 'You' : 'Assistant' }}</strong>
+        <p>{{ message.content }}</p>
+      </article>
+    }
+
+    @if (isStreaming() && streamBuffer()) {
+      <article class="assistant streaming">
+        <strong>Assistant</strong>
+        <p>{{ streamBuffer() }}</p>
+      </article>
+    }
+  </div>
+
+  @if (streamError()) {
+    <p class="error">{{ streamError() }}</p>
+  }
+
+  @if (sendError()) {
+    <p class="error">{{ sendError() }}</p>
+  }
+
+  <footer>
+    <input
+      type="text"
+      placeholder="Type your message"
+      [(ngModel)]="draft"
+      [disabled]="!activeConversation() || isSending()"
+      (keyup.enter)="sendMessage()"
+    />
+    <button type="button" (click)="sendMessage()" [disabled]="!activeConversation() || isSending()">
+      {{ isSending() ? 'Sending...' : 'Send' }}
+    </button>
+  </footer>
+</section>

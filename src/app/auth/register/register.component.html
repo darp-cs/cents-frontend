@@ -1,0 +1,27 @@
+<section class="auth-card">
+  <h1>Register</h1>
+
+  <form [formGroup]="form" (ngSubmit)="onSubmit()">
+    <label for="name">Name</label>
+    <input id="name" type="text" formControlName="name" />
+
+    <label for="email">Email</label>
+    <input id="email" type="email" formControlName="email" />
+
+    <label for="password">Password</label>
+    <input id="password" type="password" formControlName="password" />
+
+    @if (authError()) {
+      <p class="error">{{ authError() }}</p>
+    }
+
+    <button type="submit" [disabled]="isSubmitting()">
+      {{ isSubmitting() ? 'Creating account...' : 'Create account' }}
+    </button>
+  </form>
+
+  <p>
+    Already have an account?
+    <a routerLink="/login">Back to login</a>
+  </p>
+</section>

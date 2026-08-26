@@ -1,0 +1,12 @@
+<section class="document-upload">
+  <label for="doc-file">Upload document</label>
+  <input id="doc-file" type="file" (change)="onFileSelected($event)" [disabled]="isUploading()" />
+
+  @if (isUploading()) {
+    <p>Uploading... {{ uploadProgress() }}%</p>
+  }
+
+  @if (uploadError()) {
+    <p class="error">{{ uploadError() }}</p>
+  }
+</section>
