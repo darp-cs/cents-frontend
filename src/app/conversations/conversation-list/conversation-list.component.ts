@@ -17,10 +17,6 @@ export class ConversationListComponent {
   readonly isMutating = this.conversationService.isMutating;
   readonly error = this.conversationService.error;
 
-  constructor() {
-    this.conversationService.ensureConversationLoaded().subscribe();
-  }
-
   createConversation() {
     this.conversationService.createConversation('New conversation').subscribe();
   }

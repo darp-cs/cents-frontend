@@ -1,12 +1,11 @@
 import { Component, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
 import { DocumentUploadComponent } from '../document-upload/document-upload.component';
 import { DocumentService } from '../document.service';
 
 @Component({
   selector: 'app-documents-page',
-  imports: [DocumentUploadComponent, DatePipe, RouterLink],
+  imports: [DocumentUploadComponent, DatePipe],
   templateUrl: './documents-page.component.html',
   styleUrl: './documents-page.component.css',
 })

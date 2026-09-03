@@ -16,20 +16,24 @@ export class LoginComponent {
 
   readonly form = this.formBuilder.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
-    password: ['', [Validators.required, Validators.minLength(6)]],
+    password: ['', [Validators.required, Validators.minLength(8)]],
   });
 
   readonly isSubmitting = this.authService.isSubmitting;
   readonly authError = this.authService.authError;
 
   onSubmit() {
+    if (this.isSubmitting()) {
+      return;
+    }
+
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
 
     this.authService.login(this.form.getRawValue()).subscribe({
-      next: () => this.router.navigate(['/chat']),
+      next: () => this.router.navigate(['/guide']),
     });
   }
 }

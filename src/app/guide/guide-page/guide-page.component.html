@@ -1,0 +1,60 @@
+<main class="guide-page">
+  <header>
+    <h1>Guide</h1>
+    <p>How Cents is laid out, what each area does, and how the app is put together.</p>
+  </header>
+
+  <section>
+    <h2>Workspace layout</h2>
+    <ul>
+      <li><strong>Left sidebar</strong> &mdash; navigation between the app sections. Collapse it with the chevron in its header.</li>
+      <li><strong>Page area</strong> &mdash; the section you selected. It takes whatever width the sidebar and chat panel leave, so widening the chat shrinks the page.</li>
+      <li><strong>Chat panel</strong> &mdash; always available on the right. Collapse it with the chevron in its header; reopen it from the vertical <em>Chat</em> rail.</li>
+      <li><strong>Resizing</strong> &mdash; drag the vertical dividers to resize the sidebar, the chat panel and the conversation history. Handles are keyboard accessible with the left and right arrow keys.</li>
+      <li><strong>Persistence</strong> &mdash; every collapse state and panel width is stored in your browser, so the layout is the same after a reload.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Sections</h2>
+    <ul>
+      <li><strong>Guide</strong> &mdash; this page. It is the landing view after you sign in.</li>
+      <li><strong>Documents</strong> &mdash; upload files and review everything that has been ingested.</li>
+      <li><strong>Tools</strong> &mdash; tools the assistant may call during a conversation. Not available yet.</li>
+      <li><strong>Agents</strong> &mdash; agent definitions that combine a model, tools and instructions. Not available yet.</li>
+      <li><strong>Knowledge Base</strong> &mdash; the indexed content answers are retrieved from. Not available yet.</li>
+      <li><strong>Configuration</strong> &mdash; workspace settings, models and integrations. Not available yet.</li>
+      <li><strong>Metrics</strong> &mdash; usage, latency and cost. Not available yet.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Chatting</h2>
+    <ol>
+      <li>Open the chat panel on the right.</li>
+      <li>Press <strong>History</strong> to show past conversations, then pick one, or press <strong>New</strong> to start a fresh conversation.</li>
+      <li>Type a message and press Enter. The assistant reply streams in as it is generated.</li>
+      <li>Conversations can be renamed or deleted from the history list.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Architecture</h2>
+    <ul>
+      <li><strong>Angular standalone components</strong> with signals for state; there are no NgModules.</li>
+      <li><strong>Shell</strong> &mdash; <code>NavShellComponent</code> wraps the router outlet and hosts the sidebar, page area and chat panel. <code>LayoutService</code> owns collapse and width state, persisted to <code>localStorage</code> under <code>cents.layout.*</code>. <code>ResizeHandleDirective</code> implements the horizontal drag handles.</li>
+      <li><strong>Auth</strong> &mdash; <code>AuthService</code> holds the JWT in memory, <code>authInterceptor</code> attaches it to requests and signs you out on a 401, and <code>authGuard</code> protects every route except login and register.</li>
+      <li><strong>Chat</strong> &mdash; <code>ConversationService</code> manages the conversation list and the active conversation; <code>ChatService</code> sends messages and consumes the streamed response.</li>
+      <li><strong>Documents</strong> &mdash; <code>DocumentService</code> handles uploads and listing.</li>
+      <li><strong>Backend</strong> &mdash; all calls go to <code>API_BASE_URL</code>, taken from the environment files in <code>src/environments</code>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Keeping this page accurate</h2>
+    <p class="footnote">
+      This guide is part of the app, not external documentation. Whenever a feature, section or architectural
+      decision changes, update this page in the same change so it always describes the current behaviour.
+    </p>
+  </section>
+</main>

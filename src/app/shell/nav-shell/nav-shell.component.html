@@ -1,0 +1,68 @@
+<div class="nav-shell">
+  @if (isChromeVisible()) {
+    <aside class="sidebar" [class.collapsed]="isNavCollapsed()" [style.width.px]="isNavCollapsed() ? null : navWidth()">
+      <div class="sidebar-header">
+        <span class="brand">Cents</span>
+        <button
+          type="button"
+          class="collapse-toggle"
+          [attr.aria-label]="isNavCollapsed() ? 'Expand navigation' : 'Collapse navigation'"
+          [attr.aria-expanded]="!isNavCollapsed()"
+          (click)="toggleNav()"
+        >
+          <span aria-hidden="true">{{ isNavCollapsed() ? '»' : '«' }}</span>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <ul>
+          @for (item of navItems; track item.route) {
+            <li>
+              <a
+                [routerLink]="item.route"
+                routerLinkActive="active"
+                [attr.title]="isNavCollapsed() ? item.label : null"
+              >
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path [attr.d]="item.icon" />
+                </svg>
+                <span class="label">{{ item.label }}</span>
+              </a>
+            </li>
+          }
+        </ul>
+      </nav>
+    </aside>
+
+    @if (!isNavCollapsed()) {
+      <div
+        class="shell-resize"
+        aria-label="Resize navigation"
+        [appResizeHandle]="navWidth()"
+        [minWidth]="180"
+        [maxWidth]="420"
+        (widthChange)="navWidth.set($event)"
+      ></div>
+    }
+  }
+
+  <main id="page-content" class="content">
+    <router-outlet />
+  </main>
+
+  @if (isChromeVisible()) {
+    @if (!isChatCollapsed()) {
+      <div
+        class="shell-resize"
+        aria-label="Resize chat"
+        [appResizeHandle]="chatWidth()"
+        [minWidth]="320"
+        [maxWidth]="900"
+        [invert]="true"
+        (widthChange)="chatWidth.set($event)"
+      ></div>
+    }
+
+    <app-chat-panel />
+  }
+</div>
