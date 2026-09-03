@@ -5,14 +5,18 @@
 
   <div class="messages">
     @for (message of messages(); track message.id) {
-      <article [class.user]="message.role === 'user'" [class.assistant]="message.role === 'assistant'">
+      <article
+        class="message-bubble"
+        [class.user]="message.role === 'user'"
+        [class.assistant]="message.role === 'assistant'"
+      >
         <strong>{{ message.role === 'user' ? 'You' : 'Assistant' }}</strong>
         <p>{{ message.content }}</p>
       </article>
     }
 
     @if (isStreaming() && streamBuffer()) {
-      <article class="assistant streaming">
+      <article class="message-bubble assistant streaming">
         <strong>Assistant</strong>
         <p>{{ streamBuffer() }}</p>
       </article>

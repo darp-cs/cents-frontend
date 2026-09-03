@@ -30,7 +30,7 @@ export class RegisterComponent {
     }
 
     this.authService.register(this.form.getRawValue()).subscribe({
-      next: () => this.router.navigate(['/chat']),
+      next: () => this.router.navigate(['/guide']),
     });
   }
 }

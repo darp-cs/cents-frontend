@@ -1,9 +1,9 @@
 import { Component, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
 import { AuthService } from './auth/auth.service';
+import { NavShellComponent } from './shell/nav-shell/nav-shell.component';
 
 @Component({
-  imports: [RouterOutlet],
+  imports: [NavShellComponent],
   selector: 'app-root',
   styleUrl: './app.css',
   templateUrl: './app.html',
