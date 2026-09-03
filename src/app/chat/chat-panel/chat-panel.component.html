@@ -1,0 +1,49 @@
+<div class="chat-rail" [class.hidden]="!isCollapsed()">
+  <button type="button" class="rail-toggle" aria-label="Open chat" [attr.aria-expanded]="false" (click)="expand()">
+    <span class="rail-label">Chat</span>
+  </button>
+</div>
+
+@if (!isCollapsed()) {
+  <section class="chat-panel">
+    <header class="panel-header">
+      <h2>Chat</h2>
+
+      <div class="header-actions">
+        <button
+          type="button"
+          class="ghost"
+          [attr.aria-pressed]="conversationsVisible()"
+          (click)="toggleConversations()"
+        >
+          {{ conversationsVisible() ? 'Hide history' : 'History' }}
+        </button>
+
+        <button type="button" class="ghost icon" aria-label="Collapse chat" (click)="collapse()">
+          <span aria-hidden="true">&raquo;</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="panel-body">
+      @if (conversationsVisible()) {
+        <div class="conversations" [style.width.px]="conversationsWidth()">
+          <app-conversation-list />
+        </div>
+
+        <div
+          class="inner-resize"
+          aria-label="Resize conversations"
+          [appResizeHandle]="conversationsWidth()"
+          [minWidth]="160"
+          [maxWidth]="420"
+          (widthChange)="conversationsWidth.set($event)"
+        ></div>
+      }
+
+      <div class="chat">
+        <app-chat-window />
+      </div>
+    </div>
+  </section>
+}

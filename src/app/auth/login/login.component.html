@@ -3,10 +3,10 @@
 
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
     <label for="email">Email</label>
-    <input id="email" type="email" formControlName="email" />
+    <input id="email" type="email" formControlName="email" (keyup.enter)="onSubmit()" />
 
     <label for="password">Password</label>
-    <input id="password" type="password" formControlName="password" />
+    <input id="password" type="password" formControlName="password" (keyup.enter)="onSubmit()" />
 
     @if (authError()) {
       <p class="error">{{ authError() }}</p>

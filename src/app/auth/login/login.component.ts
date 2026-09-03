@@ -23,13 +23,17 @@ export class LoginComponent {
   readonly authError = this.authService.authError;
 
   onSubmit() {
+    if (this.isSubmitting()) {
+      return;
+    }
+
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
 
     this.authService.login(this.form.getRawValue()).subscribe({
-      next: () => this.router.navigate(['/chat']),
+      next: () => this.router.navigate(['/guide']),
     });
   }
 }
