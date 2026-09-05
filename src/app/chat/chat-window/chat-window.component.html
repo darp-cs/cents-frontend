@@ -36,10 +36,10 @@
       type="text"
       placeholder="Type your message"
       [(ngModel)]="draft"
-      [disabled]="!activeConversation() || isSending()"
+      [disabled]="isSending()"
       (keyup.enter)="sendMessage()"
     />
-    <button type="button" (click)="sendMessage()" [disabled]="!activeConversation() || isSending()">
+    <button type="button" (click)="sendMessage()" [disabled]="isSending()">
       {{ isSending() ? 'Sending...' : 'Send' }}
     </button>
   </footer>

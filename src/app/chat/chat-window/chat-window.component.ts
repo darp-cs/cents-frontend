@@ -1,5 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { ChatService } from '../chat.service';
 import { ConversationService } from '../../conversations/conversation.service';
 
@@ -27,12 +28,16 @@ export class ChatWindowComponent {
   readonly streamBuffer = this.chatService.streamBuffer;
 
   async sendMessage() {
-    const conversation = this.activeConversation();
-    if (!conversation) {
+    const nextDraft = this.draft;
+    if (!nextDraft.trim()) {
       return;
     }
 
-    const nextDraft = this.draft;
+    let conversation = this.activeConversation();
+    if (!conversation) {
+      conversation = await firstValueFrom(this.conversationService.createConversation('New conversation'));
+    }
+
     this.draft = '';
     await this.chatService.sendMessage(conversation.id, nextDraft);
   }

@@ -6,7 +6,10 @@ import { API_BASE_URL } from '../core/api-config';
 
 export interface AuthUser {
   id: string;
+  username: string;
   email: string;
+  first_name: string;
+  last_name: string;
   is_active: boolean;
   is_superuser: boolean;
   is_verified: boolean;
@@ -18,12 +21,14 @@ interface TokenResponse {
 }
 
 interface LoginPayload {
-  email: string;
+  username: string;
   password: string;
 }
 
 interface RegisterPayload extends LoginPayload {
-  name: string;
+  first_name: string;
+  last_name: string;
+  email: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -64,11 +69,14 @@ export class AuthService {
 
     return this.http
       .post<AuthUser>(`${API_BASE_URL}/auth/register`, {
+        username: payload.username,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
         email: payload.email,
         password: payload.password,
       })
       .pipe(
-        switchMap(() => this.loginWithPassword({ email: payload.email, password: payload.password })),
+        switchMap(() => this.loginWithPassword({ username: payload.username, password: payload.password })),
         catchError((error) => {
           this.authError.set(this.toErrorMessage(error, 'Registration failed.'));
           return throwError(() => error);
@@ -111,7 +119,7 @@ export class AuthService {
 
   private loginWithPassword(payload: LoginPayload) {
     const formBody = new URLSearchParams();
-    formBody.set('username', payload.email);
+    formBody.set('username', payload.username);
     formBody.set('password', payload.password);
 
     return this.http
