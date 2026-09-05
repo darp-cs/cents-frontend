@@ -2,8 +2,8 @@
   <h1>Login</h1>
 
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
-    <label for="email">Email</label>
-    <input id="email" type="email" formControlName="email" (keyup.enter)="onSubmit()" />
+    <label for="username">Username</label>
+    <input id="username" type="text" formControlName="username" (keyup.enter)="onSubmit()" />
 
     <label for="password">Password</label>
     <input id="password" type="password" formControlName="password" (keyup.enter)="onSubmit()" />

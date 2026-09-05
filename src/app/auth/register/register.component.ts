@@ -15,7 +15,9 @@ export class RegisterComponent {
   private readonly router = inject(Router);
 
   readonly form = this.formBuilder.nonNullable.group({
-    name: ['', [Validators.required, Validators.minLength(2)]],
+    username: ['', [Validators.required, Validators.minLength(3), Validators.pattern(/^\S+$/)]],
+    first_name: ['', [Validators.required, Validators.minLength(1)]],
+    last_name: ['', [Validators.required, Validators.minLength(1)]],
     email: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(8)]],
   });

@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { catchError, finalize, of, tap, throwError } from 'rxjs';
+import { catchError, finalize, of, switchMap, tap, throwError } from 'rxjs';
 import { API_BASE_URL } from '../core/api-config';
 
 export interface Conversation {
@@ -107,11 +107,25 @@ export class ConversationService {
   }
 
   ensureConversationLoaded() {
-    if (this.conversationsSignal().length > 0) {
-      return of(this.conversationsSignal());
+    const currentConversations = this.conversationsSignal();
+    if (currentConversations.length > 0) {
+      if (!this.activeConversationIdSignal()) {
+        this.activeConversationIdSignal.set(currentConversations[0].id);
+      }
+      return of(currentConversations);
     }
 
-    return this.loadConversations();
+    return this.loadConversations().pipe(
+      switchMap((conversations) => {
+        if (conversations.length > 0) {
+          return of(conversations);
+        }
+
+        return this.createConversation('New conversation').pipe(
+          switchMap(() => of(this.conversationsSignal()))
+        );
+      })
+    );
   }
 
   private sortByUpdatedAt(conversations: Conversation[]) {
