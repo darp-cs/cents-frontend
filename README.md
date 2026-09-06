@@ -9,6 +9,7 @@ It handles authentication, conversation management, real-time streamed chat resp
 - Lets users create, rename, delete, and switch conversations.
 - Sends chat messages and renders server-streamed responses using SSE over fetch.
 - Uploads and lists documents tied to the user/workspace context.
+- Lists agent templates with validity and enabled status, supports version history review, and lets admins enable/disable or delete templates.
 - Protects chat and document routes behind authentication.
 
 ## Architecture At A Glance
@@ -90,6 +91,7 @@ flowchart LR
 - src/app/chat
 - src/app/conversations
 - src/app/documents
+- src/app/agents
 - src/app/core
 - src/app/app.routes.ts
 - src/app/app.config.ts
@@ -106,6 +108,7 @@ flowchart LR
 - Conversation CRUD and active selection: src/app/conversations/conversation.service.ts
 - Chat streaming and lifecycle: src/app/chat/chat.service.ts
 - Document list and upload progress: src/app/documents/document.service.ts
+- Agent template list and management: src/app/agents/agent.service.ts, src/app/agents/agents-page/*
 
 ## Routes
 
@@ -113,6 +116,8 @@ flowchart LR
 - /register
 - /chat (guarded)
 - /documents (guarded)
+- /agents (guarded)
+- /agents/new (guarded, template editor entry point)
 
 ## Local Setup
 

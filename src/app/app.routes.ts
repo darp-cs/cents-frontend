@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { LoginComponent } from './auth/login/login.component';
 import { RegisterComponent } from './auth/register/register.component';
 import { authGuard } from './auth/auth.guard';
+import { AgentsPageComponent } from './agents/agents-page/agents-page.component';
 import { DocumentsPageComponent } from './documents/documents-page/documents-page.component';
 import { GuidePageComponent } from './guide/guide-page/guide-page.component';
 
@@ -34,13 +35,18 @@ export const routes: Routes = [
 		},
 	},
 	{
-		path: 'agents',
+		path: 'agents/new',
 		canActivate: [authGuard],
 		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
 		data: {
-			title: 'Agents',
-			description: 'Create and configure agents that combine models, tools and instructions.',
+			title: 'Agent Template Editor',
+			description: 'Author and validate a new agent template before creating its first version.',
 		},
+	},
+	{
+		path: 'agents',
+		canActivate: [authGuard],
+		component: AgentsPageComponent,
 	},
 	{
 		path: 'knowledge-base',
