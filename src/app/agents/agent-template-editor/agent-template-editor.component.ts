@@ -1,166 +1,59 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { EMPTY, catchError, finalize, map, of, switchMap, tap } from 'rxjs';
+import { EMPTY, catchError, finalize, tap } from 'rxjs';
 import { AgentService, AgentTemplateRecord } from '../agent.service';
+import { AgentTemplate, AgentTemplateNode, cloneTemplate, isAgentTemplate } from '../agent-template.models';
+import {
+  AgentTemplateDraftStore,
+  DEFAULT_AGENT_STARTER_TEMPLATE,
+  DraftValidationIssue,
+} from './agent-template-draft.store';
 
-type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
-
-type JsonTemplate = Record<string, unknown>;
-
-interface ValidationGrouping {
-  byNode: Record<string, string[]>;
-  general: string[];
-}
-
-const STARTER_TEMPLATE: JsonTemplate = {
-  template_version: '1.0.0',
-  entry_node: 'parse_input',
-  guardrails: {
-    max_iterations: 3,
-    banned_topics_override: null,
-    judge_enabled_override: null,
-  },
-  nodes: [
-    {
-      id: 'parse_input',
-      type: 'structured_parser',
-      description: 'Extract structured fields from the last user message.',
-      config: {
-        source_key: 'last_message',
-        strategy: 'regex',
-        regex_patterns: {
-          amount: '\\b(\\d+(?:\\.\\d{1,2})?)\\b',
-          request_type: '\\b(refund|purchase|transfer)\\b',
-        },
-        fields: [
-          {
-            name: 'amount',
-            type: 'number',
-            required: true,
-            description: 'Requested amount',
-          },
-          {
-            name: 'request_type',
-            type: 'enum',
-            required: true,
-            enum_values: ['refund', 'purchase', 'transfer'],
-            description: 'Type of request extracted from user input',
-          },
-        ],
-      },
-      next: 'route_request',
-      on_failure: 'final_failure',
-    },
-    {
-      id: 'route_request',
-      type: 'condition',
-      config: {
-        expression: 'parsed_data.amount > 1000',
-        input_keys: ['parsed_data.amount'],
-      },
-      branches: {
-        true: 'request_authorization',
-        default: 'ask_user_confirmation',
-      },
-    },
-    {
-      id: 'request_authorization',
-      type: 'service_call',
-      config: {
-        mode: 'http',
-        url: 'https://api.example.com/authorize',
-        method: 'POST',
-        headers_template: {
-          'Content-Type': 'application/json',
-        },
-        body_template: {
-          amount: '{{parsed_data.amount}}',
-          request_type: '{{parsed_data.request_type}}',
-        },
-        timeout_seconds: 20,
-      },
-      next: 'draft_response',
-      on_failure: 'ask_user_confirmation',
-    },
-    {
-      id: 'ask_user_confirmation',
-      type: 'user_interrupt',
-      config: {
-        prompt: 'Please confirm if you want to continue with this request.',
-        output_key: 'user_confirmation',
-        expected_type: 'confirmation',
-      },
-      next: 'draft_response',
-    },
-    {
-      id: 'draft_response',
-      type: 'llm_step',
-      config: {
-        model_type: 'reasoning',
-        model: 'example-model',
-        system_prompt:
-          'Summarize request type {{ parsed_data.request_type }}, amount {{ parsed_data.amount }}, and service output {{ service_results }}.',
-        max_tokens: 300,
-        temperature: 0.2,
-        output_key: 'assistant_summary',
-      },
-      next: 'final_success',
-      on_failure: 'final_failure',
-    },
-    {
-      id: 'final_success',
-      type: 'terminal_response',
-      config: {
-        template: 'Request captured successfully.',
-        status: 'success',
-        include_state_keys: ['parsed_data', 'service_results'],
-      },
-    },
-    {
-      id: 'final_failure',
-      type: 'terminal_response',
-      config: {
-        template: 'Request could not be completed. Please review validation issues and retry.',
-        status: 'failure',
-        include_state_keys: ['parsed_data'],
-      },
-    },
-  ],
-};
+type EditorMode = 'natural-language' | 'visual-graph' | 'advanced-json';
 
 @Component({
   selector: 'app-agent-template-editor',
   templateUrl: './agent-template-editor.component.html',
   styleUrl: './agent-template-editor.component.css',
+  providers: [AgentTemplateDraftStore],
 })
 export class AgentTemplateEditorComponent {
   private readonly agentService = inject(AgentService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly draftStore = inject(AgentTemplateDraftStore);
 
   readonly isEditing = signal(false);
   readonly isBootstrapping = signal(false);
   readonly loadError = signal<string | null>(null);
-
-  readonly agentName = signal('');
-  readonly draftJson = signal(this.prettyJson(STARTER_TEMPLATE));
-  readonly baselineJson = signal<string | null>(null);
-
-  readonly jsonParseError = signal<string | null>(null);
-  readonly validationStatus = signal<ValidationStatus>('idle');
-  readonly validationErrorsByNode = signal<Record<string, string[]>>({});
-  readonly generalValidationErrors = signal<string[]>([]);
-  readonly validateError = signal<string | null>(null);
-
-  readonly isSaving = signal(false);
   readonly saveError = signal<string | null>(null);
-  readonly validatedFingerprint = signal<string | null>(null);
+  readonly isSaving = signal(false);
+  readonly editorMode = signal<EditorMode>('natural-language');
+  readonly nodeConfigErrors = signal<Record<string, string>>({});
+  readonly graphEditError = signal<string | null>(null);
+  readonly exportMessage = signal<string | null>(null);
+
+  readonly agentName = this.draftStore.agentName;
+  readonly baselineVersion = this.draftStore.baselineVersion;
+  readonly template = this.draftStore.template;
+  readonly draftJsonPreview = this.draftStore.jsonPreview;
+  readonly baselineJson = this.draftStore.baselineJsonPreview;
+  readonly graph = this.draftStore.graph;
+  readonly graphLayout = this.draftStore.graphLayout;
+  readonly isDirty = this.draftStore.isDirty;
+
+  readonly validationStatus = this.draftStore.validationStatus;
+  readonly validateError = this.draftStore.validateError;
+  readonly validationErrorsByNode = this.draftStore.validationErrorsByNode;
+  readonly generalValidationErrors = this.draftStore.generalValidationErrors;
 
   readonly validationNodeEntries = computed(() =>
     Object.entries(this.validationErrorsByNode())
       .map(([nodeId, errors]) => ({ nodeId, errors }))
       .sort((left, right) => left.nodeId.localeCompare(right.nodeId))
   );
+
+  readonly nodeIds = computed(() => this.template().nodes.map((node) => node.id));
 
   readonly canValidate = computed(
     () => this.agentName().trim().length > 0 && this.validationStatus() !== 'validating' && !this.isBootstrapping()
@@ -169,12 +62,14 @@ export class AgentTemplateEditorComponent {
   readonly canSave = computed(
     () =>
       this.validationStatus() === 'valid' &&
-      this.validatedFingerprint() === this.currentFingerprint() &&
+      this.draftStore.isCurrentDraftValidated() &&
       !this.isSaving() &&
       !this.isBootstrapping()
   );
 
   constructor() {
+    this.draftStore.initializeFromStarter(DEFAULT_AGENT_STARTER_TEMPLATE);
+
     const editingName = this.route.snapshot.paramMap.get('name');
     if (!editingName) {
       return;
@@ -189,64 +84,280 @@ export class AgentTemplateEditorComponent {
       return;
     }
 
-    this.agentName.set(name);
-    this.resetValidationState();
+    this.draftStore.setAgentName(name);
   }
 
-  onDraftInput(json: string) {
-    this.draftJson.set(json);
-    this.resetValidationState();
+  setEditorMode(mode: EditorMode) {
+    this.editorMode.set(mode);
+  }
+
+  resetToStarter() {
+    if (this.isEditing()) {
+      return;
+    }
+
+    this.draftStore.initializeFromStarter(DEFAULT_AGENT_STARTER_TEMPLATE, this.agentName().trim());
+  }
+
+  onTemplateVersionInput(version: string) {
+    this.updateTemplate((template) => {
+      template.template_version = version;
+    });
+  }
+
+  onEntryNodeInput(entryNode: string) {
+    this.updateTemplate((template) => {
+      template.entry_node = entryNode;
+    });
+  }
+
+  onMaxIterationsInput(raw: string) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return;
+    }
+
+    this.updateTemplate((template) => {
+      template.guardrails.max_iterations = Math.floor(parsed);
+    });
+  }
+
+  onBannedTopicsInput(raw: string) {
+    const topics = raw
+      .split(',')
+      .map((topic) => topic.trim())
+      .filter((topic) => topic.length > 0);
+
+    this.updateTemplate((template) => {
+      template.guardrails.banned_topics_override = topics.length > 0 ? topics : null;
+    });
+  }
+
+  onJudgeOverrideInput(raw: string) {
+    const nextValue = raw === 'null' ? null : raw === 'true';
+    this.updateTemplate((template) => {
+      template.guardrails.judge_enabled_override = nextValue;
+    });
+  }
+
+  onNodeDescriptionInput(nodeId: string, value: string) {
+    this.updateNode(nodeId, (node) => {
+      const next = cloneNode(node);
+      next.description = value;
+      return next;
+    });
+  }
+
+  onNodeIdInput(currentNodeId: string, proposedNodeId: string) {
+    const nextNodeId = proposedNodeId.trim();
+    if (!nextNodeId || nextNodeId === currentNodeId) {
+      return;
+    }
+
+    if (this.nodeIds().includes(nextNodeId)) {
+      this.graphEditError.set(`Node id '${nextNodeId}' already exists.`);
+      return;
+    }
+
+    this.graphEditError.set(null);
+    this.draftStore.renameGraphLayoutNode(currentNodeId, nextNodeId);
+
+    this.updateTemplate((template) => {
+      template.entry_node = template.entry_node === currentNodeId ? nextNodeId : template.entry_node;
+      template.nodes = template.nodes.map((node) => {
+        const renamedNode = node.id === currentNodeId ? { ...node, id: nextNodeId } : node;
+        return replaceNodeReferences(renamedNode, currentNodeId, nextNodeId);
+      });
+    });
+  }
+
+  onNodeCoordinateInput(nodeId: string, axis: 'x' | 'y', raw: string) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+
+    this.draftStore.updateGraphLayoutForNode(nodeId, {
+      [axis]: parsed,
+    });
+  }
+
+  onNodeSelected(nodeId: string) {
+    this.draftStore.selectGraphNode(nodeId);
+  }
+
+  onNodeConfigInput(nodeId: string, rawJson: string) {
+    try {
+      const parsed = JSON.parse(rawJson) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        this.setNodeConfigError(nodeId, 'Node config must be a JSON object.');
+        return;
+      }
+
+      this.clearNodeConfigError(nodeId);
+      this.updateNode(nodeId, (node) => {
+        const next = cloneNode(node);
+        next.config = parsed as typeof next.config;
+        return next;
+      });
+    } catch {
+      this.setNodeConfigError(nodeId, 'Node config JSON is invalid.');
+    }
+  }
+
+  onNodeNextInput(nodeId: string, nextNodeId: string) {
+    if (!nextNodeId.trim()) {
+      return;
+    }
+
+    this.updateNode(nodeId, (node) => {
+      if (!supportsNext(node)) {
+        return node;
+      }
+
+      const next = cloneNode(node);
+      next.next = nextNodeId;
+      return next;
+    });
+  }
+
+  onNodeFailureInput(nodeId: string, failureNodeId: string) {
+    this.updateNode(nodeId, (node) => {
+      if (!supportsFailure(node)) {
+        return node;
+      }
+
+      const next = cloneNode(node);
+      next.on_failure = failureNodeId.trim() ? failureNodeId : undefined;
+      return next;
+    });
+  }
+
+  addConditionBranch(nodeId: string) {
+    this.updateNode(nodeId, (node) => {
+      if (node.type !== 'condition') {
+        return node;
+      }
+
+      let branchIndex = 1;
+      let branchName = `branch_${branchIndex}`;
+      while (branchName in node.branches) {
+        branchIndex += 1;
+        branchName = `branch_${branchIndex}`;
+      }
+
+      return {
+        ...node,
+        branches: {
+          ...node.branches,
+          [branchName]: node.branches['default'],
+        },
+      };
+    });
+  }
+
+  removeConditionBranch(nodeId: string, branchLabel: string) {
+    if (branchLabel === 'default') {
+      return;
+    }
+
+    this.updateNode(nodeId, (node) => {
+      if (node.type !== 'condition') {
+        return node;
+      }
+
+      const branches = { ...node.branches };
+      delete branches[branchLabel];
+      return {
+        ...node,
+        branches,
+      };
+    });
+  }
+
+  onConditionBranchNameInput(nodeId: string, branchLabel: string, proposedLabel: string) {
+    const nextLabel = proposedLabel.trim();
+    if (!nextLabel || nextLabel === branchLabel) {
+      return;
+    }
+
+    this.updateNode(nodeId, (node) => {
+      if (node.type !== 'condition') {
+        return node;
+      }
+
+      if (nextLabel in node.branches) {
+        this.graphEditError.set(`Branch '${nextLabel}' already exists on node '${nodeId}'.`);
+        return node;
+      }
+
+      const branchTarget = node.branches[branchLabel];
+      const updated: Record<string, string> = {};
+      for (const [label, target] of Object.entries(node.branches)) {
+        if (label === branchLabel) {
+          updated[nextLabel] = branchTarget;
+          continue;
+        }
+        updated[label] = target;
+      }
+
+      this.graphEditError.set(null);
+      return {
+        ...node,
+        branches: updated,
+      };
+    });
+  }
+
+  onConditionBranchTargetInput(nodeId: string, branchLabel: string, targetNodeId: string) {
+    if (!targetNodeId.trim()) {
+      return;
+    }
+
+    this.updateNode(nodeId, (node) => {
+      if (node.type !== 'condition') {
+        return node;
+      }
+
+      return {
+        ...node,
+        branches: {
+          ...node.branches,
+          [branchLabel]: targetNodeId,
+        },
+      };
+    });
   }
 
   validateTemplate() {
     const name = this.agentName().trim();
     if (!name) {
-      this.validateError.set('Agent name is required before validation.');
+      this.draftStore.setValidationFailure('Agent name is required before validation.');
       return;
     }
 
-    const parsedTemplate = this.parseDraftTemplate();
-    if (!parsedTemplate) {
-      return;
-    }
-
-    this.validationStatus.set('validating');
-    this.validateError.set(null);
+    this.draftStore.startValidation();
     this.saveError.set(null);
 
-    const validationName = this.buildValidationName(name);
-
     this.agentService
-      .createAgentTemplate(validationName, parsedTemplate)
+      .validateAuthoringTemplate(this.template())
       .pipe(
-        switchMap((record) =>
-          this.agentService.deleteAgent(validationName).pipe(
-            map(() => record),
-            catchError(() => of(record))
-          )
-        ),
-        tap((record) => {
-          const rawErrors = this.toValidationErrorMessages(record.validation_errors);
-          const grouped = this.groupErrorsByNode(rawErrors, parsedTemplate);
-
-          this.validationErrorsByNode.set(grouped.byNode);
-          this.generalValidationErrors.set(grouped.general);
-
-          if (record.is_valid) {
-            this.validationStatus.set('valid');
-            this.validatedFingerprint.set(this.currentFingerprint());
-            this.jsonParseError.set(null);
-            return;
+        tap((result) => {
+          if (result.normalized_template && isAgentTemplate(result.normalized_template)) {
+            this.draftStore.setTemplate(result.normalized_template);
           }
 
-          this.validationStatus.set('invalid');
-          this.validatedFingerprint.set(null);
-          this.validateError.set('Template validation failed. Resolve the listed errors and validate again.');
+          const issues = result.errors.map(
+            (error): DraftValidationIssue => ({
+              path: error.path,
+              nodeId: error.node_id,
+              message: error.message,
+            })
+          );
+          this.draftStore.setValidationResult(result.is_valid, issues);
         }),
         catchError((error) => {
-          this.validationStatus.set('invalid');
-          this.validatedFingerprint.set(null);
-          this.validateError.set(this.toErrorMessage(error, 'Failed to validate template.'));
+          this.draftStore.setValidationFailure(this.toErrorMessage(error, 'Failed to validate template.'));
           return EMPTY;
         })
       )
@@ -259,10 +370,7 @@ export class AgentTemplateEditorComponent {
     }
 
     const name = this.agentName().trim();
-    const parsedTemplate = this.parseDraftTemplate();
-    if (!parsedTemplate) {
-      return;
-    }
+    const parsedTemplate = this.template();
 
     this.isSaving.set(true);
     this.saveError.set(null);
@@ -307,113 +415,70 @@ export class AgentTemplateEditorComponent {
   }
 
   private applyLoadedTemplate(record: AgentTemplateRecord) {
-    const baseline = this.prettyJson(record.raw_template ?? {});
-
-    this.agentName.set(record.name);
-    this.baselineJson.set(baseline);
-    this.draftJson.set(baseline);
-
-    this.resetValidationState();
-  }
-
-  private parseDraftTemplate(): JsonTemplate | null {
-    try {
-      const parsed = JSON.parse(this.draftJson()) as unknown;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        this.jsonParseError.set('Template must be a JSON object.');
-        this.validationStatus.set('invalid');
-        this.validatedFingerprint.set(null);
-        return null;
-      }
-
-      this.jsonParseError.set(null);
-      return parsed as JsonTemplate;
-    } catch {
-      this.jsonParseError.set('Template JSON is invalid. Fix syntax errors and try again.');
-      this.validationStatus.set('invalid');
-      this.validatedFingerprint.set(null);
-      return null;
-    }
-  }
-
-  private toValidationErrorMessages(raw: unknown): string[] {
-    if (Array.isArray(raw)) {
-      return raw.map((item) => String(item)).filter((message) => message.trim().length > 0);
+    const loadedTemplate = record.raw_template;
+    if (!loadedTemplate || !isAgentTemplate(loadedTemplate)) {
+      this.loadError.set('Loaded template payload is missing or invalid.');
+      return;
     }
 
-    if (typeof raw === 'string' && raw.trim().length > 0) {
-      return [raw.trim()];
-    }
-
-    return [];
+    this.draftStore.initializeFromExisting(record.name, record.version, loadedTemplate);
   }
 
-  private groupErrorsByNode(errors: string[], template: JsonTemplate): ValidationGrouping {
-    const byNode: Record<string, string[]> = {};
-    const general: string[] = [];
-    const nodeIds = this.nodeIdsFromTemplate(template);
-
-    for (const message of errors) {
-      const explicitNode = /Node '([^']+)'/.exec(message)?.[1];
-      if (explicitNode) {
-        this.pushNodeError(byNode, explicitNode, message);
-        continue;
-      }
-
-      const indexedNodeMatch = /nodes(?:\.|\[)(\d+)(?:\.|\])/.exec(message);
-      if (indexedNodeMatch) {
-        const index = Number(indexedNodeMatch[1]);
-        const nodeId = nodeIds[index];
-        if (nodeId) {
-          this.pushNodeError(byNode, nodeId, message);
-          continue;
-        }
-      }
-
-      general.push(message);
+  copyJsonPreview() {
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!clipboard?.writeText) {
+      this.exportMessage.set('Clipboard export is unavailable in this environment.');
+      return;
     }
 
-    return { byNode, general };
+    void clipboard
+      .writeText(this.draftJsonPreview())
+      .then(() => this.exportMessage.set('Preview JSON copied to clipboard.'))
+      .catch(() => this.exportMessage.set('Failed to copy preview JSON to clipboard.'));
   }
 
-  private nodeIdsFromTemplate(template: JsonTemplate) {
-    const nodes = template['nodes'];
-    if (!Array.isArray(nodes)) {
+  nodeConfigJson(node: AgentTemplateNode) {
+    return this.prettyJson(node.config);
+  }
+
+  nodeLayoutById(nodeId: string) {
+    return this.graphLayout().nodeLayoutById[nodeId] ?? { x: 0, y: 0, selected: false };
+  }
+
+  branchEntries(node: AgentTemplateNode) {
+    if (node.type !== 'condition') {
       return [];
     }
 
-    return nodes.map((node) => {
-      if (!node || typeof node !== 'object') {
-        return '';
-      }
+    return Object.entries(node.branches).map(([label, target]) => ({ label, target }));
+  }
 
-      const nodeId = (node as Record<string, unknown>)['id'];
-      return typeof nodeId === 'string' ? nodeId : '';
+  private setNodeConfigError(nodeId: string, message: string) {
+    this.nodeConfigErrors.update((state) => ({
+      ...state,
+      [nodeId]: message,
+    }));
+  }
+
+  private clearNodeConfigError(nodeId: string) {
+    this.nodeConfigErrors.update((state) => {
+      const next = { ...state };
+      delete next[nodeId];
+      return next;
     });
   }
 
-  private pushNodeError(target: Record<string, string[]>, nodeId: string, message: string) {
-    const existing = target[nodeId] ?? [];
-    target[nodeId] = [...existing, message];
+  private updateNode(nodeId: string, updater: (node: AgentTemplateNode) => AgentTemplateNode) {
+    this.updateTemplate((template) => {
+      template.nodes = template.nodes.map((node) => (node.id === nodeId ? updater(node) : node));
+    });
   }
 
-  private resetValidationState() {
-    this.validationStatus.set('idle');
-    this.validationErrorsByNode.set({});
-    this.generalValidationErrors.set([]);
-    this.validateError.set(null);
-    this.validatedFingerprint.set(null);
-    this.saveError.set(null);
-  }
-
-  private currentFingerprint() {
-    return `${this.agentName().trim()}\n${this.draftJson()}`;
-  }
-
-  private buildValidationName(sourceName: string) {
-    const sanitized = sourceName.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 40) || 'agent';
-    const randomSuffix = Math.random().toString(36).slice(2, 8);
-    return `__validate__${sanitized}_${Date.now()}_${randomSuffix}`;
+  private updateTemplate(mutator: (template: AgentTemplate) => void) {
+    const nextTemplate = cloneTemplate(this.template());
+    mutator(nextTemplate);
+    this.draftStore.setTemplate(nextTemplate);
+    this.graphEditError.set(null);
   }
 
   private prettyJson(value: unknown) {
@@ -434,4 +499,48 @@ export class AgentTemplateEditorComponent {
 
     return fallback;
   }
+}
+
+function supportsNext(
+  node: AgentTemplateNode
+): node is Exclude<AgentTemplateNode, { type: 'condition' } | { type: 'terminal_response' }> {
+  return node.type !== 'condition' && node.type !== 'terminal_response';
+}
+
+function supportsFailure(node: AgentTemplateNode): node is Extract<AgentTemplateNode, { on_failure?: string | null }> {
+  return node.type === 'structured_parser' || node.type === 'service_call' || node.type === 'llm_step';
+}
+
+function replaceNodeReferences(node: AgentTemplateNode, currentNodeId: string, nextNodeId: string): AgentTemplateNode {
+  if (node.type === 'condition') {
+    const remappedBranches = Object.fromEntries(
+      Object.entries(node.branches).map(([label, target]) => [label, target === currentNodeId ? nextNodeId : target])
+    );
+    return {
+      ...node,
+      branches: remappedBranches,
+    };
+  }
+
+  if (node.type === 'terminal_response') {
+    return node;
+  }
+
+  const withNext = {
+    ...node,
+    next: node.next === currentNodeId ? nextNodeId : node.next,
+  };
+
+  if (!supportsFailure(withNext)) {
+    return withNext;
+  }
+
+  return {
+    ...withNext,
+    on_failure: withNext.on_failure === currentNodeId ? nextNodeId : withNext.on_failure,
+  };
+}
+
+function cloneNode<T extends AgentTemplateNode>(node: T): T {
+  return JSON.parse(JSON.stringify(node)) as T;
 }
