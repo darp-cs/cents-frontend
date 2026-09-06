@@ -4,8 +4,6 @@ import { RegisterComponent } from './auth/register/register.component';
 import { authGuard } from './auth/auth.guard';
 import { DocumentsPageComponent } from './documents/documents-page/documents-page.component';
 import { GuidePageComponent } from './guide/guide-page/guide-page.component';
-import { MetricsPageComponent } from './metrics/metrics-page/metrics-page.component';
-import { PlaceholderPageComponent } from './shell/placeholder-page/placeholder-page.component';
 
 export const routes: Routes = [
 	{
@@ -29,7 +27,7 @@ export const routes: Routes = [
 	{
 		path: 'tools',
 		canActivate: [authGuard],
-		component: PlaceholderPageComponent,
+		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
 		data: {
 			title: 'Tools',
 			description: 'Manage the tools your assistant can call during a conversation.',
@@ -38,7 +36,7 @@ export const routes: Routes = [
 	{
 		path: 'agents',
 		canActivate: [authGuard],
-		component: PlaceholderPageComponent,
+		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
 		data: {
 			title: 'Agents',
 			description: 'Create and configure agents that combine models, tools and instructions.',
@@ -47,7 +45,7 @@ export const routes: Routes = [
 	{
 		path: 'knowledge-base',
 		canActivate: [authGuard],
-		component: PlaceholderPageComponent,
+		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
 		data: {
 			title: 'Knowledge Base',
 			description: 'Organise the indexed content your assistant retrieves answers from.',
@@ -56,7 +54,7 @@ export const routes: Routes = [
 	{
 		path: 'configuration',
 		canActivate: [authGuard],
-		component: PlaceholderPageComponent,
+		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
 		data: {
 			title: 'Configuration',
 			description: 'Adjust workspace level settings, models and integrations.',
@@ -65,7 +63,11 @@ export const routes: Routes = [
 	{
 		path: 'metrics',
 		canActivate: [authGuard],
-		component: MetricsPageComponent,
+		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
+		data: {
+			title: 'Metrics',
+			description: 'Review usage, performance and activity across your workspace.',
+		},
 	},
 	{
 		path: '',
