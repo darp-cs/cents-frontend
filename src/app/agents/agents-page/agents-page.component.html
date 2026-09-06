@@ -1,0 +1,119 @@
+<main class="agents-page">
+  <header>
+    <div>
+      <h1>Agents</h1>
+      <p>Manage each template's health, enabled state, and version history.</p>
+    </div>
+    <button type="button" data-testid="new-agent" (click)="navigateToNewAgent()">New agent</button>
+  </header>
+
+  <section class="agents-table-panel">
+    @if (isLoading()) {
+      <p>Loading agents...</p>
+    }
+
+    @if (error()) {
+      <p class="error">{{ error() }}</p>
+    }
+
+    @if (!isLoading() && agents().length === 0) {
+      <p>No agent templates found.</p>
+    }
+
+    @if (agents().length > 0) {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Template</th>
+              <th scope="col">Enabled</th>
+              <th scope="col">Latest Version</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (agent of agents(); track agent.name) {
+              <tr>
+                <td class="agent-name">{{ agent.name }}</td>
+                <td>
+                  <span class="badge" [class.badge-ok]="agent.is_valid" [class.badge-bad]="!agent.is_valid">
+                    {{ agent.is_valid ? 'Valid' : 'Invalid' }}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge" [class.badge-ok]="agent.enabled" [class.badge-neutral]="!agent.enabled">
+                    {{ agent.enabled ? 'Enabled' : 'Disabled' }}
+                  </span>
+                </td>
+                <td><strong>v{{ agent.version }}</strong></td>
+                <td class="actions">
+                  <button type="button" class="secondary toggle-history" (click)="toggleVersionHistory(agent.name)">
+                    {{ isHistoryExpanded(agent.name) ? 'Hide history' : 'View history' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary toggle-enabled"
+                    [disabled]="isMutating() || !agent.is_valid"
+                    (click)="setEnabled(agent)"
+                  >
+                    {{ agent.enabled ? 'Disable' : 'Enable' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="danger delete-agent"
+                    [disabled]="isMutating()"
+                    (click)="deleteAgent(agent.name)"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+
+              @if (isHistoryExpanded(agent.name)) {
+                <tr class="history-row">
+                  <td colspan="5">
+                    <div class="history-content">
+                      <h2>Version history</h2>
+
+                      @if (isVersionLoading(agent.name)) {
+                        <p>Loading history...</p>
+                      }
+
+                      @if (versionError(agent.name)) {
+                        <p class="error">{{ versionError(agent.name) }}</p>
+                      }
+
+                      @if (!isVersionLoading(agent.name) && versionsFor(agent.name).length === 0) {
+                        <p>No versions available.</p>
+                      }
+
+                      @if (versionsFor(agent.name).length > 0) {
+                        <ul class="history-list">
+                          @for (version of versionsFor(agent.name); track version.id) {
+                            <li>
+                              <div class="history-main">
+                                <strong>v{{ version.version }}</strong>
+                                <span class="badge" [class.badge-ok]="version.is_valid" [class.badge-bad]="!version.is_valid">
+                                  {{ version.is_valid ? 'Valid' : 'Invalid' }}
+                                </span>
+                                <span class="badge" [class.badge-ok]="version.enabled" [class.badge-neutral]="!version.enabled">
+                                  {{ version.enabled ? 'Enabled' : 'Disabled' }}
+                                </span>
+                              </div>
+                              <small>{{ version.created_at | date: 'short' }}</small>
+                            </li>
+                          }
+                        </ul>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</main>
