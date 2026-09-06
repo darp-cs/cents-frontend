@@ -1,20 +1,81 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { EMPTY, catchError, finalize, tap } from 'rxjs';
-import { AgentService, AgentTemplateRecord } from '../agent.service';
-import { AgentTemplate, AgentTemplateNode, cloneTemplate, isAgentTemplate } from '../agent-template.models';
+import { AgentAuthoringSchemaResponse, AgentService, AgentTemplateRecord } from '../agent.service';
+import { AgentNodeType, AgentTemplate, AgentTemplateNode, cloneTemplate, isAgentTemplate } from '../agent-template.models';
+import { AgentTemplateGraph } from '../agent-template-graph.adapters';
 import {
   AgentTemplateDraftStore,
   DEFAULT_AGENT_STARTER_TEMPLATE,
   DraftValidationIssue,
+  GraphLayoutState,
 } from './agent-template-draft.store';
+import { AgentCanvasPaletteItem, AgentWorkflowCanvasComponent } from './agent-workflow-canvas.component';
 
 type EditorMode = 'natural-language' | 'visual-graph' | 'advanced-json';
+
+const SUPPORTED_NODE_TYPES: AgentNodeType[] = [
+  'structured_parser',
+  'condition',
+  'service_call',
+  'user_interrupt',
+  'llm_step',
+  'terminal_response',
+];
+
+const DEFAULT_PALETTE: AgentCanvasPaletteItem[] = [
+  {
+    type: 'structured_parser',
+    label: 'Structured Parser',
+    icon: 'SP',
+    description: 'Extract structured fields from input before branching.',
+  },
+  {
+    type: 'condition',
+    label: 'Condition',
+    icon: '?',
+    description: 'Route execution through named branch keys.',
+  },
+  {
+    type: 'service_call',
+    label: 'Service Call',
+    icon: 'API',
+    description: 'Invoke HTTP endpoints or tools to fetch external data.',
+  },
+  {
+    type: 'user_interrupt',
+    label: 'User Interrupt',
+    icon: 'USR',
+    description: 'Pause execution and ask the user for explicit input.',
+  },
+  {
+    type: 'llm_step',
+    label: 'LLM Step',
+    icon: 'LLM',
+    description: 'Generate model output based on state context.',
+  },
+  {
+    type: 'terminal_response',
+    label: 'Terminal Response',
+    icon: 'END',
+    description: 'Finalize the workflow with a success or failure response.',
+  },
+];
+
+const ICON_BY_NODE_TYPE: Record<AgentNodeType, string> = {
+  structured_parser: 'SP',
+  condition: '?',
+  service_call: 'API',
+  user_interrupt: 'USR',
+  llm_step: 'LLM',
+  terminal_response: 'END',
+};
 
 @Component({
   selector: 'app-agent-template-editor',
   templateUrl: './agent-template-editor.component.html',
   styleUrl: './agent-template-editor.component.css',
+  imports: [AgentWorkflowCanvasComponent],
   providers: [AgentTemplateDraftStore],
 })
 export class AgentTemplateEditorComponent {
@@ -29,9 +90,10 @@ export class AgentTemplateEditorComponent {
   readonly saveError = signal<string | null>(null);
   readonly isSaving = signal(false);
   readonly editorMode = signal<EditorMode>('natural-language');
-  readonly nodeConfigErrors = signal<Record<string, string>>({});
-  readonly graphEditError = signal<string | null>(null);
   readonly exportMessage = signal<string | null>(null);
+  readonly paletteLoading = signal(true);
+  readonly paletteError = signal<string | null>(null);
+  readonly paletteItems = signal<AgentCanvasPaletteItem[]>(DEFAULT_PALETTE);
 
   readonly agentName = this.draftStore.agentName;
   readonly baselineVersion = this.draftStore.baselineVersion;
@@ -69,6 +131,7 @@ export class AgentTemplateEditorComponent {
 
   constructor() {
     this.draftStore.initializeFromStarter(DEFAULT_AGENT_STARTER_TEMPLATE);
+    this.loadAuthoringSchemaCatalog();
 
     const editingName = this.route.snapshot.paramMap.get('name');
     if (!editingName) {
@@ -141,192 +204,26 @@ export class AgentTemplateEditorComponent {
   }
 
   onNodeDescriptionInput(nodeId: string, value: string) {
-    this.updateNode(nodeId, (node) => {
-      const next = cloneNode(node);
-      next.description = value;
-      return next;
-    });
+    this.updateNode(nodeId, (node) => ({
+      ...node,
+      description: value,
+    }));
   }
 
-  onNodeIdInput(currentNodeId: string, proposedNodeId: string) {
-    const nextNodeId = proposedNodeId.trim();
-    if (!nextNodeId || nextNodeId === currentNodeId) {
-      return;
-    }
-
-    if (this.nodeIds().includes(nextNodeId)) {
-      this.graphEditError.set(`Node id '${nextNodeId}' already exists.`);
-      return;
-    }
-
-    this.graphEditError.set(null);
-    this.draftStore.renameGraphLayoutNode(currentNodeId, nextNodeId);
-
-    this.updateTemplate((template) => {
-      template.entry_node = template.entry_node === currentNodeId ? nextNodeId : template.entry_node;
-      template.nodes = template.nodes.map((node) => {
-        const renamedNode = node.id === currentNodeId ? { ...node, id: nextNodeId } : node;
-        return replaceNodeReferences(renamedNode, currentNodeId, nextNodeId);
-      });
-    });
+  onGraphChanged(nextGraph: AgentTemplateGraph) {
+    this.draftStore.setTemplateFromGraph(nextGraph);
   }
 
-  onNodeCoordinateInput(nodeId: string, axis: 'x' | 'y', raw: string) {
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed)) {
-      return;
-    }
-
-    this.draftStore.updateGraphLayoutForNode(nodeId, {
-      [axis]: parsed,
-    });
+  onGraphLayoutChanged(layout: GraphLayoutState) {
+    this.draftStore.setGraphLayout(layout);
   }
 
-  onNodeSelected(nodeId: string) {
-    this.draftStore.selectGraphNode(nodeId);
+  nodeTypeLabel(node: AgentTemplateNode) {
+    return this.paletteItems().find((item) => item.type === node.type)?.label ?? node.type;
   }
 
-  onNodeConfigInput(nodeId: string, rawJson: string) {
-    try {
-      const parsed = JSON.parse(rawJson) as unknown;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        this.setNodeConfigError(nodeId, 'Node config must be a JSON object.');
-        return;
-      }
-
-      this.clearNodeConfigError(nodeId);
-      this.updateNode(nodeId, (node) => {
-        const next = cloneNode(node);
-        next.config = parsed as typeof next.config;
-        return next;
-      });
-    } catch {
-      this.setNodeConfigError(nodeId, 'Node config JSON is invalid.');
-    }
-  }
-
-  onNodeNextInput(nodeId: string, nextNodeId: string) {
-    if (!nextNodeId.trim()) {
-      return;
-    }
-
-    this.updateNode(nodeId, (node) => {
-      if (!supportsNext(node)) {
-        return node;
-      }
-
-      const next = cloneNode(node);
-      next.next = nextNodeId;
-      return next;
-    });
-  }
-
-  onNodeFailureInput(nodeId: string, failureNodeId: string) {
-    this.updateNode(nodeId, (node) => {
-      if (!supportsFailure(node)) {
-        return node;
-      }
-
-      const next = cloneNode(node);
-      next.on_failure = failureNodeId.trim() ? failureNodeId : undefined;
-      return next;
-    });
-  }
-
-  addConditionBranch(nodeId: string) {
-    this.updateNode(nodeId, (node) => {
-      if (node.type !== 'condition') {
-        return node;
-      }
-
-      let branchIndex = 1;
-      let branchName = `branch_${branchIndex}`;
-      while (branchName in node.branches) {
-        branchIndex += 1;
-        branchName = `branch_${branchIndex}`;
-      }
-
-      return {
-        ...node,
-        branches: {
-          ...node.branches,
-          [branchName]: node.branches['default'],
-        },
-      };
-    });
-  }
-
-  removeConditionBranch(nodeId: string, branchLabel: string) {
-    if (branchLabel === 'default') {
-      return;
-    }
-
-    this.updateNode(nodeId, (node) => {
-      if (node.type !== 'condition') {
-        return node;
-      }
-
-      const branches = { ...node.branches };
-      delete branches[branchLabel];
-      return {
-        ...node,
-        branches,
-      };
-    });
-  }
-
-  onConditionBranchNameInput(nodeId: string, branchLabel: string, proposedLabel: string) {
-    const nextLabel = proposedLabel.trim();
-    if (!nextLabel || nextLabel === branchLabel) {
-      return;
-    }
-
-    this.updateNode(nodeId, (node) => {
-      if (node.type !== 'condition') {
-        return node;
-      }
-
-      if (nextLabel in node.branches) {
-        this.graphEditError.set(`Branch '${nextLabel}' already exists on node '${nodeId}'.`);
-        return node;
-      }
-
-      const branchTarget = node.branches[branchLabel];
-      const updated: Record<string, string> = {};
-      for (const [label, target] of Object.entries(node.branches)) {
-        if (label === branchLabel) {
-          updated[nextLabel] = branchTarget;
-          continue;
-        }
-        updated[label] = target;
-      }
-
-      this.graphEditError.set(null);
-      return {
-        ...node,
-        branches: updated,
-      };
-    });
-  }
-
-  onConditionBranchTargetInput(nodeId: string, branchLabel: string, targetNodeId: string) {
-    if (!targetNodeId.trim()) {
-      return;
-    }
-
-    this.updateNode(nodeId, (node) => {
-      if (node.type !== 'condition') {
-        return node;
-      }
-
-      return {
-        ...node,
-        branches: {
-          ...node.branches,
-          [branchLabel]: targetNodeId,
-        },
-      };
-    });
+  nodeTypeIcon(node: AgentTemplateNode) {
+    return this.paletteItems().find((item) => item.type === node.type)?.icon ?? ICON_BY_NODE_TYPE[node.type];
   }
 
   validateTemplate() {
@@ -453,21 +350,6 @@ export class AgentTemplateEditorComponent {
     return Object.entries(node.branches).map(([label, target]) => ({ label, target }));
   }
 
-  private setNodeConfigError(nodeId: string, message: string) {
-    this.nodeConfigErrors.update((state) => ({
-      ...state,
-      [nodeId]: message,
-    }));
-  }
-
-  private clearNodeConfigError(nodeId: string) {
-    this.nodeConfigErrors.update((state) => {
-      const next = { ...state };
-      delete next[nodeId];
-      return next;
-    });
-  }
-
   private updateNode(nodeId: string, updater: (node: AgentTemplateNode) => AgentTemplateNode) {
     this.updateTemplate((template) => {
       template.nodes = template.nodes.map((node) => (node.id === nodeId ? updater(node) : node));
@@ -478,7 +360,48 @@ export class AgentTemplateEditorComponent {
     const nextTemplate = cloneTemplate(this.template());
     mutator(nextTemplate);
     this.draftStore.setTemplate(nextTemplate);
-    this.graphEditError.set(null);
+  }
+
+  private loadAuthoringSchemaCatalog() {
+    this.paletteLoading.set(true);
+    this.paletteError.set(null);
+
+    this.agentService
+      .getAuthoringSchema()
+      .pipe(
+        tap((schema) => {
+          this.paletteItems.set(this.toPaletteItems(schema));
+        }),
+        catchError((error) => {
+          this.paletteItems.set(DEFAULT_PALETTE);
+          this.paletteError.set(this.toErrorMessage(error, 'Failed to load component palette from schema catalog.'));
+          return EMPTY;
+        }),
+        finalize(() => this.paletteLoading.set(false))
+      )
+      .subscribe();
+  }
+
+  private toPaletteItems(schema: AgentAuthoringSchemaResponse): AgentCanvasPaletteItem[] {
+    const byType = new Map(
+      schema.node_types
+        .filter((nodeType) => isAgentNodeType(nodeType.type))
+        .map((nodeType) => [nodeType.type, nodeType])
+    );
+
+    return SUPPORTED_NODE_TYPES.map((type) => {
+      const schemaNode = byType.get(type);
+      if (!schemaNode) {
+        return DEFAULT_PALETTE.find((item) => item.type === type) as AgentCanvasPaletteItem;
+      }
+
+      return {
+        type,
+        label: schemaNode.label,
+        icon: ICON_BY_NODE_TYPE[type],
+        description: schemaNode.description,
+      };
+    });
   }
 
   private prettyJson(value: unknown) {
@@ -501,46 +424,6 @@ export class AgentTemplateEditorComponent {
   }
 }
 
-function supportsNext(
-  node: AgentTemplateNode
-): node is Exclude<AgentTemplateNode, { type: 'condition' } | { type: 'terminal_response' }> {
-  return node.type !== 'condition' && node.type !== 'terminal_response';
-}
-
-function supportsFailure(node: AgentTemplateNode): node is Extract<AgentTemplateNode, { on_failure?: string | null }> {
-  return node.type === 'structured_parser' || node.type === 'service_call' || node.type === 'llm_step';
-}
-
-function replaceNodeReferences(node: AgentTemplateNode, currentNodeId: string, nextNodeId: string): AgentTemplateNode {
-  if (node.type === 'condition') {
-    const remappedBranches = Object.fromEntries(
-      Object.entries(node.branches).map(([label, target]) => [label, target === currentNodeId ? nextNodeId : target])
-    );
-    return {
-      ...node,
-      branches: remappedBranches,
-    };
-  }
-
-  if (node.type === 'terminal_response') {
-    return node;
-  }
-
-  const withNext = {
-    ...node,
-    next: node.next === currentNodeId ? nextNodeId : node.next,
-  };
-
-  if (!supportsFailure(withNext)) {
-    return withNext;
-  }
-
-  return {
-    ...withNext,
-    on_failure: withNext.on_failure === currentNodeId ? nextNodeId : withNext.on_failure,
-  };
-}
-
-function cloneNode<T extends AgentTemplateNode>(node: T): T {
-  return JSON.parse(JSON.stringify(node)) as T;
+function isAgentNodeType(value: string): value is AgentNodeType {
+  return SUPPORTED_NODE_TYPES.includes(value as AgentNodeType);
 }

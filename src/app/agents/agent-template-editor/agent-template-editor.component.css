@@ -69,6 +69,12 @@ header h1 {
   gap: 0.75rem;
 }
 
+.mode-description {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #4f5f7d;
+}
+
 .field-grid {
   display: grid;
   gap: 0.75rem;
@@ -119,68 +125,6 @@ header h1 {
   margin: 0;
   font-size: 0.82rem;
   color: #56647f;
-}
-
-.graph-node-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.graph-node {
-  border: 1px solid #dbe6fd;
-  border-radius: 12px;
-  padding: 0.75rem;
-  background: #fff;
-  display: grid;
-  gap: 0.55rem;
-}
-
-.graph-node.selected {
-  border-color: #7aa8ff;
-  box-shadow: inset 0 0 0 1px #7aa8ff;
-}
-
-.graph-node .node-title-row input {
-  font-weight: 600;
-}
-
-.layout-row {
-  display: grid;
-  gap: 0.55rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.branch-editor {
-  display: grid;
-  gap: 0.45rem;
-  border: 1px dashed #d5e2ff;
-  border-radius: 10px;
-  padding: 0.6rem;
-}
-
-.branch-editor h4 {
-  margin: 0;
-  font-size: 0.84rem;
-}
-
-.branch-row {
-  display: grid;
-  gap: 0.4rem;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-}
-
-.mini-editor {
-  width: 100%;
-  min-height: 140px;
-  padding: 0.6rem;
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  background: #fbfcff;
-  color: #17233d;
-  font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
-  line-height: 1.45;
-  resize: vertical;
 }
 
 .code-editor {
@@ -277,7 +221,6 @@ button.save {
 }
 
 @media (max-width: 960px) {
-  .graph-node-grid,
   .field-grid {
     grid-template-columns: 1fr;
   }
@@ -301,9 +244,5 @@ button.save {
   .preview-actions {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .branch-row {
-    grid-template-columns: 1fr;
   }
 }

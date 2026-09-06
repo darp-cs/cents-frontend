@@ -1,0 +1,262 @@
+<section class="workflow-shell" aria-label="Workflow graph editor">
+  <aside class="palette-panel" aria-label="Component palette">
+    <h3>Component Palette</h3>
+    <p class="panel-help">Click a component to insert it into the workflow.</p>
+
+    @if (paletteLoading) {
+      <p class="panel-note">Loading authoring schema...</p>
+    } @else if (paletteError) {
+      <p class="panel-error">{{ paletteError }}</p>
+    } @else {
+      <div class="palette-list">
+        @for (item of palette; track item.type) {
+          <button
+            type="button"
+            class="palette-item"
+            [disabled]="disabled"
+            [attr.aria-label]="'Add ' + item.label + ' node'"
+            (click)="addNodeFromPalette(item)"
+          >
+            <span class="palette-icon" aria-hidden="true">{{ item.icon }}</span>
+            <span>
+              <strong>{{ item.label }}</strong>
+              <small>{{ item.description }}</small>
+            </span>
+          </button>
+        }
+      </div>
+    }
+  </aside>
+
+  <section class="canvas-panel">
+    <div class="canvas-toolbar">
+      <button type="button" class="secondary" [disabled]="disabled" (click)="fitToView()">Fit To View</button>
+      <button type="button" class="secondary" [disabled]="disabled" (click)="clearSelection()">Clear Selection</button>
+      <button type="button" class="secondary" [disabled]="disabled" (click)="deleteSelection()">Delete Selected</button>
+      <button type="button" class="secondary" [disabled]="disabled" (click)="toggleAssistTools()">
+        {{ assistToolsOpen() ? 'Hide' : 'Show' }} Assist Tools
+      </button>
+      <span class="toolbar-note">Powered by @foblex/flow</span>
+    </div>
+
+    @if (graph.nodes.length === 0) {
+      <div class="empty-state">Add components from the palette to start your workflow graph.</div>
+    }
+
+    <f-flow
+      fDraggable
+      [fDraggableDisabled]="disabled"
+      (fCreateConnection)="onCreateConnection($event)"
+      (fReassignConnection)="onReassignConnection($event)"
+      (fSelectionChange)="onSelectionChange($event)"
+      (fDeleteSelected)="onDeleteSelected($event)"
+      (fMoveNodes)="onMoveNodes($event)"
+    >
+      <f-selection-area></f-selection-area>
+      <f-canvas
+        #canvas
+        fZoom
+        [position]="{ x: layout.viewport.x, y: layout.viewport.y }"
+        [scale]="layout.viewport.zoom"
+        (fCanvasChange)="onCanvasChange($event)"
+      >
+        <f-connection-for-create></f-connection-for-create>
+
+        <ng-container ngProjectAs="[fConnections]">
+          @for (connection of connectionViews(); track connection.id) {
+            <f-connection
+              [fConnectionId]="connection.id"
+              [fSourceId]="connection.sourceConnectorId"
+              [fTargetId]="connection.targetConnectorId"
+            >
+              <span fConnectionContent [position]="0.5" class="edge-chip-shell" [attr.aria-label]="'Edge ' + connection.label">
+                @if (connection.kind === 'branch' && isBranchEditing(connection.id)) {
+                  <span class="edge-chip edge-chip-branch edge-chip-edit">
+                    <input
+                      type="text"
+                      fDragBlocker
+                      [disabled]="disabled"
+                      [value]="branchLabelDraft()"
+                      aria-label="Branch key"
+                      (input)="branchLabelDraft.set($any($event.target).value)"
+                    />
+                    <button type="button" fDragBlocker [disabled]="disabled" (click)="applyBranchEdit(connection.id)">Save</button>
+                    <button type="button" class="secondary" fDragBlocker [disabled]="disabled" (click)="cancelBranchEdit()">Cancel</button>
+                  </span>
+                } @else {
+                  <span
+                    class="edge-chip"
+                    [class.edge-chip-next]="connection.kind === 'next'"
+                    [class.edge-chip-failure]="connection.kind === 'on_failure'"
+                    [class.edge-chip-branch]="connection.kind === 'branch'"
+                    [class.edge-chip-selected]="connection.isSelected"
+                  >
+                    <span>{{ connection.label }}</span>
+                    @if (connection.kind === 'branch') {
+                      <button
+                        type="button"
+                        class="chip-btn"
+                        fDragBlocker
+                        [disabled]="disabled"
+                        aria-label="Rename branch label"
+                        (click)="startBranchEdit(connection.id)"
+                      >
+                        Rename
+                      </button>
+                    }
+                    <button
+                      type="button"
+                      class="chip-btn chip-btn-danger"
+                      fDragBlocker
+                      [disabled]="disabled"
+                      aria-label="Delete edge"
+                      (click)="deleteEdgeById(connection.id)"
+                    >
+                      Remove
+                    </button>
+                  </span>
+                }
+              </span>
+            </f-connection>
+          }
+        </ng-container>
+
+        <ng-container ngProjectAs="[fNodes]">
+          @for (node of nodeViews(); track node.id) {
+            <article
+              fNode
+              fDragHandle
+              class="flow-node"
+              [fNodeId]="node.id"
+              [fNodePosition]="node.position"
+              [class.entry]="node.isEntry"
+              [attr.aria-label]="'Workflow node ' + node.id + ' (' + node.label + ')'"
+              tabindex="0"
+            >
+              <div class="flow-node-header">
+                <span class="flow-node-icon" aria-hidden="true">{{ node.icon }}</span>
+                <div>
+                  <strong>{{ node.id }}</strong>
+                  <small>{{ node.label }}</small>
+                </div>
+              </div>
+
+              <p class="flow-node-description">{{ node.description || 'No description.' }}</p>
+
+              <div class="node-actions">
+                <button type="button" class="secondary" fDragBlocker [disabled]="disabled" (click)="setEntryNode(node.id)">
+                  {{ node.isEntry ? 'Entry Node' : 'Mark Entry' }}
+                </button>
+                <button type="button" class="secondary" fDragBlocker [disabled]="disabled" (click)="duplicateNode(node.id)">
+                  Duplicate
+                </button>
+                <button type="button" class="secondary" fDragBlocker [disabled]="disabled" (click)="deleteNode(node.id)">
+                  Delete
+                </button>
+              </div>
+
+              <div class="connectors" aria-label="Connection handles">
+                <div
+                  fConnector
+                  fConnectorType="target"
+                  class="connector connector-in"
+                  [fConnectorId]="targetConnectorId(node.id)"
+                  [attr.aria-label]="'Target connector for ' + node.id"
+                ></div>
+
+                @if (node.supportsNext) {
+                  <div
+                    fConnector
+                    fConnectorType="source"
+                    class="connector connector-next"
+                    [fConnectorId]="nextConnectorId(node.id)"
+                    [attr.aria-label]="'next connector for ' + node.id"
+                  ></div>
+                }
+
+                @if (node.supportsFailure) {
+                  <div
+                    fConnector
+                    fConnectorType="source"
+                    class="connector connector-failure"
+                    [fConnectorId]="failureConnectorId(node.id)"
+                    [attr.aria-label]="'on_failure connector for ' + node.id"
+                  ></div>
+                }
+
+                @if (node.type === 'condition') {
+                  <div class="condition-branches">
+                    @for (branch of conditionBranchOutputs(node.id); track branch.connectorId) {
+                      <div class="branch-connector">
+                        <span>{{ branch.label }}</span>
+                        <div
+                          fConnector
+                          fConnectorType="source"
+                          class="connector connector-branch"
+                          [fConnectorId]="branch.connectorId"
+                          [attr.aria-label]="'branch ' + branch.label + ' connector for ' + node.id"
+                        ></div>
+                      </div>
+                    }
+                    <button type="button" class="secondary" fDragBlocker [disabled]="disabled" (click)="addBranchForNode(node.id)">
+                      + Branch
+                    </button>
+                  </div>
+                }
+              </div>
+            </article>
+          }
+        </ng-container>
+      </f-canvas>
+    </f-flow>
+
+    @if (assistToolsOpen()) {
+      @defer (when assistToolsOpen()) {
+        <section class="canvas-secondary-tools" aria-label="Canvas assist tools">
+          <section class="legend-block" aria-label="Connector legend">
+            <h4>Connection Legend</h4>
+            <ul>
+              <li><span class="legend-dot legend-next" aria-hidden="true"></span><strong>next</strong>: primary transition path.</li>
+              <li><span class="legend-dot legend-failure" aria-hidden="true"></span><strong>on_failure</strong>: fallback when node execution fails.</li>
+              <li><span class="legend-dot legend-branch" aria-hidden="true"></span><strong>branch:&lt;key&gt;</strong>: named condition route key.</li>
+              <li><span class="legend-dot legend-in" aria-hidden="true"></span><strong>target</strong>: inbound destination handle.</li>
+            </ul>
+          </section>
+
+          <section class="connect-without-pointer" aria-label="Keyboard connection composer">
+            <h4>Create Connection Without Pointer</h4>
+            <p class="panel-help">Choose a source handle and target node, then create the edge.</p>
+
+            <div class="connection-row">
+              <label>
+                Source
+                <select [value]="connectionSource()" [disabled]="disabled" (change)="connectionSource.set($any($event.target).value)">
+                  @for (option of sourceConnectorOptions(); track option.id) {
+                    <option [value]="option.id">{{ option.label }}</option>
+                  }
+                </select>
+              </label>
+
+              <label>
+                Target
+                <select [value]="connectionTarget()" [disabled]="disabled" (change)="connectionTarget.set($any($event.target).value)">
+                  @for (option of targetNodeOptions(); track option.id) {
+                    <option [value]="option.id">{{ option.label }}</option>
+                  }
+                </select>
+              </label>
+
+              <button type="button" [disabled]="disabled" (click)="createConnectionWithoutPointer()">Create/Replace</button>
+            </div>
+          </section>
+        </section>
+      } @placeholder {
+        <p class="panel-note">Loading assist tools...</p>
+      }
+    }
+
+    @if (connectionError()) {
+      <p class="panel-error">{{ connectionError() }}</p>
+    }
+  </section>
+</section>
