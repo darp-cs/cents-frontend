@@ -130,6 +130,16 @@ describe('AgentsPageComponent', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/agents/new']);
   });
 
+  it('navigates to template editor in edit mode from row action', () => {
+    const rows = Array.from(fixture.nativeElement.querySelectorAll('tbody tr')) as HTMLTableRowElement[];
+    const plannerRow = rows.find((row) => row.textContent?.includes('Planner'));
+    const editButton = plannerRow?.querySelector('.edit-agent') as HTMLButtonElement;
+
+    editButton.click();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/agents', 'Planner', 'edit']);
+  });
+
   it('asks for confirmation before delete and deletes when confirmed', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 

@@ -37,11 +37,18 @@ export const routes: Routes = [
 	{
 		path: 'agents/new',
 		canActivate: [authGuard],
-		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
-		data: {
-			title: 'Agent Template Editor',
-			description: 'Author and validate a new agent template before creating its first version.',
-		},
+		loadComponent: () =>
+			import('./agents/agent-template-editor/agent-template-editor.component').then(
+				(module) => module.AgentTemplateEditorComponent
+			),
+	},
+	{
+		path: 'agents/:name/edit',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./agents/agent-template-editor/agent-template-editor.component').then(
+				(module) => module.AgentTemplateEditorComponent
+			),
 	},
 	{
 		path: 'agents',

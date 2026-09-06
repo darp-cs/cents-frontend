@@ -1,0 +1,136 @@
+.agent-editor-page {
+  width: min(1200px, 100%);
+  margin: 1.5rem auto;
+  padding: 0 1rem 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  background: linear-gradient(120deg, #edf3ff, #fff0f7);
+  box-shadow: var(--shadow-1);
+}
+
+header h1 {
+  font-size: 1.4rem;
+}
+
+.editor-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-1);
+  display: grid;
+  gap: 0.9rem;
+}
+
+.editor-toolbar {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.editor-toolbar label {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.editor-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.editor-grid.has-baseline {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.editor-grid h2 {
+  font-size: 0.96rem;
+  margin-bottom: 0.45rem;
+}
+
+.code-editor {
+  width: 100%;
+  min-height: 430px;
+  padding: 0.85rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: #fbfcff;
+  color: #17233d;
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+button.secondary {
+  border-color: var(--border-soft);
+  background: var(--surface-1);
+  color: var(--text-strong);
+  box-shadow: none;
+}
+
+button.save {
+  background: linear-gradient(145deg, #1b75dd, #3f96ff);
+}
+
+.validation-block {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface-1);
+}
+
+.validation-block h3 {
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.validation-block ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.error {
+  color: #c6185b;
+}
+
+.success {
+  color: #0f7a43;
+}
+
+@media (max-width: 960px) {
+  .editor-grid.has-baseline {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .action-row {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .action-row button {
+    width: 100%;
+  }
+}

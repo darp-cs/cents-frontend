@@ -18,9 +18,34 @@ export interface SetAgentEnabledPayload {
   version?: number;
 }
 
+export interface AgentTemplateUpsertPayload {
+  name: string;
+  raw_template: Record<string, unknown>;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AgentService {
   private readonly http = inject(HttpClient);
+
+  createAgentTemplate(name: string, rawTemplate: Record<string, unknown>) {
+    const payload: AgentTemplateUpsertPayload = {
+      name,
+      raw_template: rawTemplate,
+    };
+    return this.http.post<AgentTemplateRecord>(`${API_BASE_URL}/agents`, payload);
+  }
+
+  createAgentVersion(name: string, rawTemplate: Record<string, unknown>) {
+    const encodedName = encodeURIComponent(name);
+    return this.http.put<AgentTemplateRecord>(`${API_BASE_URL}/agents/${encodedName}`, {
+      raw_template: rawTemplate,
+    });
+  }
+
+  getLatestAgent(name: string) {
+    const encodedName = encodeURIComponent(name);
+    return this.http.get<AgentTemplateRecord>(`${API_BASE_URL}/agents/${encodedName}`);
+  }
 
   listAgents() {
     return this.http.get<AgentTemplateRecord[]>(`${API_BASE_URL}/agents`);

@@ -30,6 +30,69 @@ describe('AgentService', () => {
     request.flush([]);
   });
 
+  it('calls POST /agents to create a new template', () => {
+    const payload = {
+      name: 'Planner',
+      raw_template: { template_version: '1.0.0' },
+    };
+
+    service.createAgentTemplate(payload.name, payload.raw_template).subscribe();
+
+    const request = httpController.expectOne(`${API_BASE_URL}/agents`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual(payload);
+
+    request.flush({
+      id: '1',
+      name: payload.name,
+      version: 1,
+      raw_template: payload.raw_template,
+      is_valid: true,
+      validation_errors: null,
+      enabled: true,
+      created_at: '2026-09-05T00:00:00Z',
+    });
+  });
+
+  it('calls PUT /agents/{name} to create a new version', () => {
+    service.createAgentVersion('Planner', { template_version: '1.0.1' }).subscribe();
+
+    const request = httpController.expectOne(`${API_BASE_URL}/agents/Planner`);
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({
+      raw_template: { template_version: '1.0.1' },
+    });
+
+    request.flush({
+      id: '2',
+      name: 'Planner',
+      version: 2,
+      raw_template: { template_version: '1.0.1' },
+      is_valid: true,
+      validation_errors: null,
+      enabled: true,
+      created_at: '2026-09-05T00:00:00Z',
+    });
+  });
+
+  it('calls GET /agents/{name} for latest agent detail', () => {
+    service.getLatestAgent('Planner').subscribe();
+
+    const request = httpController.expectOne(`${API_BASE_URL}/agents/Planner`);
+    expect(request.request.method).toBe('GET');
+
+    request.flush({
+      id: '2',
+      name: 'Planner',
+      version: 2,
+      raw_template: { template_version: '1.0.1' },
+      is_valid: true,
+      validation_errors: null,
+      enabled: true,
+      created_at: '2026-09-05T00:00:00Z',
+    });
+  });
+
   it('calls GET /agents/{name}/versions', () => {
     const name = 'Agent Alpha/1';
 

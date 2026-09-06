@@ -32,6 +32,10 @@ export class AgentsPageComponent {
     void this.router.navigate(['/agents/new']);
   }
 
+  navigateToEditAgent(name: string) {
+    void this.router.navigate(['/agents', name, 'edit']);
+  }
+
   toggleVersionHistory(name: string) {
     const isExpanded = this.isHistoryExpanded(name);
     this.expandedByName.update((state) => ({ ...state, [name]: !isExpanded }));
