@@ -150,7 +150,7 @@ export function graphToTemplate(graph: AgentTemplateGraph): AgentTemplate {
           type: 'structured_parser',
           description: node.description,
           config: cloneJson(node.config) as StructuredParserNode['config'],
-          next: getSingleEdge(edgesBySource, node.id, 'next').target,
+          next: getEdgeTargetOrEmpty(edgesBySource, node.id, 'next'),
           ...(getOptionalEdge(edgesBySource, node.id, 'on_failure')
             ? { on_failure: getOptionalEdge(edgesBySource, node.id, 'on_failure')?.target }
             : {}),
@@ -161,7 +161,7 @@ export function graphToTemplate(graph: AgentTemplateGraph): AgentTemplate {
           type: 'service_call',
           description: node.description,
           config: cloneJson(node.config) as ServiceCallNode['config'],
-          next: getSingleEdge(edgesBySource, node.id, 'next').target,
+          next: getEdgeTargetOrEmpty(edgesBySource, node.id, 'next'),
           ...(getOptionalEdge(edgesBySource, node.id, 'on_failure')
             ? { on_failure: getOptionalEdge(edgesBySource, node.id, 'on_failure')?.target }
             : {}),
@@ -172,7 +172,7 @@ export function graphToTemplate(graph: AgentTemplateGraph): AgentTemplate {
           type: 'llm_step',
           description: node.description,
           config: cloneJson(node.config) as LLMStepNode['config'],
-          next: getSingleEdge(edgesBySource, node.id, 'next').target,
+          next: getEdgeTargetOrEmpty(edgesBySource, node.id, 'next'),
           ...(getOptionalEdge(edgesBySource, node.id, 'on_failure')
             ? { on_failure: getOptionalEdge(edgesBySource, node.id, 'on_failure')?.target }
             : {}),
@@ -183,7 +183,7 @@ export function graphToTemplate(graph: AgentTemplateGraph): AgentTemplate {
           type: 'user_interrupt',
           description: node.description,
           config: cloneJson(node.config) as UserInterruptNode['config'],
-          next: getSingleEdge(edgesBySource, node.id, 'next').target,
+          next: getEdgeTargetOrEmpty(edgesBySource, node.id, 'next'),
         };
       case 'condition': {
         const branches = getBranchEdges(edgesBySource, node.id);
@@ -266,16 +266,12 @@ function buildEdgesBySource(edges: AgentGraphEdge[]) {
   }, {});
 }
 
-function getSingleEdge(edgesBySource: Record<string, AgentGraphEdge[]>, nodeId: string, kind: GraphEdgeKind) {
-  const edges = (edgesBySource[nodeId] ?? []).filter((edge) => edge.kind === kind);
-  if (edges.length === 0) {
-    throw new Error(`Graph node '${nodeId}' is missing required '${kind}' edge.`);
-  }
-  return edges[0];
-}
-
 function getOptionalEdge(edgesBySource: Record<string, AgentGraphEdge[]>, nodeId: string, kind: GraphEdgeKind) {
   return (edgesBySource[nodeId] ?? []).find((edge) => edge.kind === kind);
+}
+
+function getEdgeTargetOrEmpty(edgesBySource: Record<string, AgentGraphEdge[]>, nodeId: string, kind: GraphEdgeKind) {
+  return getOptionalEdge(edgesBySource, nodeId, kind)?.target ?? '';
 }
 
 function getBranchEdges(edgesBySource: Record<string, AgentGraphEdge[]>, nodeId: string) {

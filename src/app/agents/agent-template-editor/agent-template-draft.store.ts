@@ -302,6 +302,13 @@ export class AgentTemplateDraftStore {
     }));
   }
 
+  setGraphLayout(layout: GraphLayoutState) {
+    this.graphLayout.set({
+      nodeLayoutById: { ...layout.nodeLayoutById },
+      viewport: { ...layout.viewport },
+    });
+  }
+
   startValidation() {
     this.validationStatus.set('validating');
     this.validationIssues.set([]);

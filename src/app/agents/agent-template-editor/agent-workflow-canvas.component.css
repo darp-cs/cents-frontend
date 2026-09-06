@@ -1,0 +1,380 @@
+workflow-shell,
+.workflow-shell {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 0.8rem;
+}
+
+.palette-panel,
+.canvas-panel {
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 0.75rem;
+  background: #ffffff;
+}
+
+.palette-panel h3,
+.canvas-panel h4 {
+  margin: 0;
+}
+
+.panel-help {
+  margin: 0.25rem 0 0.6rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.panel-note {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.panel-error {
+  margin: 0.35rem 0 0;
+  color: #c6185b;
+  font-size: 0.83rem;
+}
+
+.palette-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.palette-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.55rem;
+  text-align: left;
+  border: 1px solid #d9e7ff;
+  background: #f9fcff;
+  color: #173e78;
+}
+
+.palette-item small {
+  display: block;
+  color: #5f6f89;
+  font-size: 0.76rem;
+}
+
+.palette-icon {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  background: #e8f1ff;
+  border: 1px solid #c8ddff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.canvas-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.toolbar-note {
+  margin-left: auto;
+  font-size: 0.76rem;
+  color: #617291;
+}
+
+.canvas-secondary-tools {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+}
+
+.legend-block {
+  border: 1px solid #d8e6ff;
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: #fbfdff;
+}
+
+.legend-block ul {
+  margin: 0.45rem 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.legend-block li {
+  font-size: 0.8rem;
+  color: #435572;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.legend-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  display: inline-flex;
+  border: 1px solid transparent;
+}
+
+.legend-next {
+  background: #1f8f59;
+}
+
+.legend-failure {
+  background: #cf5f1b;
+}
+
+.legend-branch {
+  background: #5b4ecf;
+}
+
+.legend-in {
+  background: #2f73df;
+}
+
+f-flow {
+  display: block;
+  width: 100%;
+  min-height: 560px;
+  height: 68vh;
+  border: 1px solid #d8e4fb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: radial-gradient(circle at 20% 20%, #f6f9ff, #eef3ff 60%, #f9fbff);
+}
+
+.flow-node {
+  width: 220px;
+  border: 1px solid #bfd4ff;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(23, 43, 77, 0.08);
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.flow-node.entry {
+  border-color: #2f73df;
+  box-shadow: 0 0 0 2px rgba(47, 115, 223, 0.2);
+}
+
+.flow-node-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.flow-node-icon {
+  display: inline-flex;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 6px;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #edf4ff;
+  border: 1px solid #c9dcff;
+  color: #2459a3;
+}
+
+.flow-node-header small {
+  display: block;
+  font-size: 0.72rem;
+  color: #5e6f8f;
+}
+
+.flow-node-description {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #3b4d6d;
+}
+
+.node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.node-actions button {
+  flex: 1;
+  min-width: 5.25rem;
+}
+
+.connectors {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.connector {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+}
+
+.connector-in {
+  background: #2f73df;
+}
+
+.connector-next {
+  background: #1f8f59;
+}
+
+.connector-failure {
+  background: #cf5f1b;
+}
+
+.connector-branch {
+  background: #5b4ecf;
+}
+
+.condition-branches {
+  border: 1px dashed #d7e5ff;
+  border-radius: 8px;
+  padding: 0.35rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.branch-connector {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.77rem;
+  color: #475a7c;
+}
+
+.edge-chip {
+  border: 1px solid #bfd3ff;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #244d89;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.16rem 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.edge-chip-shell {
+  display: inline-flex;
+}
+
+.edge-chip-next {
+  border-color: #b2e6c8;
+  background: #f1fbf5;
+  color: #1f6a45;
+}
+
+.edge-chip-failure {
+  border-color: #efc7ac;
+  background: #fff7f1;
+  color: #8d451a;
+}
+
+.edge-chip-branch {
+  border-color: #cec8f6;
+  background: #f7f6ff;
+  color: #44389c;
+}
+
+.edge-chip-selected {
+  box-shadow: 0 0 0 2px rgba(47, 115, 223, 0.2);
+}
+
+.edge-chip-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.edge-chip-edit input {
+  width: 7rem;
+  font-size: 0.68rem;
+  border: 1px solid #c9d8f6;
+  border-radius: 4px;
+  padding: 0.12rem 0.24rem;
+}
+
+.chip-btn {
+  border: 1px solid #bfd3ff;
+  background: #fff;
+  color: #1d4f95;
+  border-radius: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.06rem 0.24rem;
+  line-height: 1.2;
+}
+
+.chip-btn-danger {
+  border-color: #f1c3d8;
+  color: #a32563;
+}
+
+.empty-state {
+  margin-bottom: 0.6rem;
+  border: 1px dashed #c9d9f6;
+  border-radius: 10px;
+  padding: 0.55rem;
+  font-size: 0.84rem;
+  color: #506180;
+  background: #f8fbff;
+}
+
+.connect-without-pointer {
+  margin-top: 0.7rem;
+  border: 1px solid #d8e6ff;
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: #fbfdff;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.connection-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.connection-row label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #596a87;
+}
+
+@media (max-width: 1200px) {
+  .workflow-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-note {
+    margin-left: 0;
+  }
+
+  .canvas-secondary-tools {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  f-flow {
+    min-height: 500px;
+    height: 62vh;
+  }
+
+  .connection-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,9 +1,29 @@
+import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 import { AgentService, AgentTemplateRecord } from '../agent.service';
+import { AgentTemplateGraph } from '../agent-template-graph.adapters';
 import { AgentTemplate } from '../agent-template.models';
+import { GraphLayoutState } from './agent-template-draft.store';
+import { AgentWorkflowCanvasComponent } from './agent-workflow-canvas.component';
 import { AgentTemplateEditorComponent } from './agent-template-editor.component';
+
+@Component({
+  selector: 'app-agent-workflow-canvas',
+  template: '',
+})
+class CanvasStubComponent {
+  @Input({ required: true }) graph!: AgentTemplateGraph;
+  @Input({ required: true }) layout!: GraphLayoutState;
+  @Input() paletteLoading = false;
+  @Input() paletteError: string | null = null;
+  @Input() palette: unknown[] = [];
+  @Input() disabled = false;
+
+  @Output() graphChange = new EventEmitter<AgentTemplateGraph>();
+  @Output() layoutChange = new EventEmitter<GraphLayoutState>();
+}
 
 const loadedTemplate: AgentTemplate = {
   template_version: '1.0.0',
@@ -58,7 +78,58 @@ describe('AgentTemplateEditorComponent', () => {
     ),
     createAgentTemplate: vi.fn((_name: string, _template: AgentTemplate) => of(validRecord)),
     createAgentVersion: vi.fn((_name: string, _template: AgentTemplate) => of(validRecord)),
-    getAuthoringSchema: vi.fn(() => of({})),
+    getAuthoringSchema: vi.fn(() =>
+      of({
+        catalog_version: '1.0.0',
+        template_version_pattern: '^\\d+\\.\\d+(\\.\\d+)?$',
+        node_id_pattern: '^[A-Za-z][A-Za-z0-9_-]*$',
+        guardrails_fields: [],
+        node_types: [
+          {
+            type: 'structured_parser',
+            label: 'Structured Parser',
+            description: 'Parser node',
+            config_fields: [],
+            transitions: [],
+          },
+          {
+            type: 'condition',
+            label: 'Condition',
+            description: 'Condition node',
+            config_fields: [],
+            transitions: [],
+          },
+          {
+            type: 'service_call',
+            label: 'Service Call',
+            description: 'Service node',
+            config_fields: [],
+            transitions: [],
+          },
+          {
+            type: 'user_interrupt',
+            label: 'User Interrupt',
+            description: 'Interrupt node',
+            config_fields: [],
+            transitions: [],
+          },
+          {
+            type: 'llm_step',
+            label: 'LLM Step',
+            description: 'LLM node',
+            config_fields: [],
+            transitions: [],
+          },
+          {
+            type: 'terminal_response',
+            label: 'Terminal Response',
+            description: 'Terminal node',
+            config_fields: [],
+            transitions: [],
+          },
+        ],
+      })
+    ),
   };
 
   const router = {
@@ -86,7 +157,16 @@ describe('AgentTemplateEditorComponent', () => {
           },
         },
       ],
-    }).compileComponents();
+    })
+      .overrideComponent(AgentTemplateEditorComponent, {
+        remove: {
+          imports: [AgentWorkflowCanvasComponent],
+        },
+        add: {
+          imports: [CanvasStubComponent],
+        },
+      })
+      .compileComponents();
   }
 
   it('starts with a starter template that includes all six node types', async () => {
@@ -149,7 +229,9 @@ describe('AgentTemplateEditorComponent', () => {
 
     const component = fixture.componentInstance;
     component.setEditorMode('visual-graph');
-    component.onNodeDescriptionInput('parse_input', 'graph edit text');
+    const graphCopy = JSON.parse(JSON.stringify(component.graph())) as AgentTemplateGraph;
+    graphCopy.nodes[0].description = 'graph edit text';
+    component.onGraphChanged(graphCopy);
     component.setEditorMode('advanced-json');
 
     expect(component.draftJsonPreview()).toContain('graph edit text');
@@ -179,7 +261,17 @@ describe('AgentTemplateEditorComponent', () => {
 
     const component = fixture.componentInstance;
     component.onAgentNameInput('ExpenseApproval');
-    component.onNodeCoordinateInput('parse_input', 'x', '220');
+    component.onGraphLayoutChanged({
+      ...component.graphLayout(),
+      nodeLayoutById: {
+        ...component.graphLayout().nodeLayoutById,
+        parse_input: {
+          x: 220,
+          y: 120,
+          selected: true,
+        },
+      },
+    });
     component.validateTemplate();
     component.saveTemplate();
 
@@ -187,5 +279,22 @@ describe('AgentTemplateEditorComponent', () => {
     expect(savedTemplate).toBeDefined();
     expect((savedTemplate as Record<string, unknown>)['nodeLayoutById']).toBeUndefined();
     expect((savedTemplate as Record<string, unknown>)['viewport']).toBeUndefined();
+  });
+
+  it('updates canonical draft from graphChange events', async () => {
+    await configure(null);
+    fixture = TestBed.createComponent(AgentTemplateEditorComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    const nextGraph = JSON.parse(JSON.stringify(component.graph())) as AgentTemplateGraph;
+    nextGraph.edges = nextGraph.edges.filter((edge) => edge.kind !== 'on_failure');
+    component.onGraphChanged(nextGraph);
+
+    const parseNode = component.template().nodes.find((node) => node.id === 'parse_input');
+    if (!parseNode || parseNode.type !== 'structured_parser') {
+      throw new Error('Expected parse_input structured_parser node in starter template');
+    }
+    expect(parseNode.on_failure).toBeUndefined();
   });
 });

@@ -170,4 +170,19 @@ describe('AgentService', () => {
       errors: [],
     });
   });
+
+  it('calls GET /agents/authoring/schema for graph palette metadata', () => {
+    service.getAuthoringSchema().subscribe();
+
+    const request = httpController.expectOne(`${API_BASE_URL}/agents/authoring/schema`);
+    expect(request.request.method).toBe('GET');
+
+    request.flush({
+      catalog_version: '1.0.0',
+      template_version_pattern: '^\\d+\\.\\d+(\\.\\d+)?$',
+      node_id_pattern: '^[A-Za-z][A-Za-z0-9_-]*$',
+      guardrails_fields: [],
+      node_types: [],
+    });
+  });
 });

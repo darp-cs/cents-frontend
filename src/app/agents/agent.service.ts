@@ -26,6 +26,37 @@ export interface AgentAuthoringValidateResponse {
   errors: AgentAuthoringValidationError[];
 }
 
+export interface AgentAuthoringSchemaField {
+  name: string;
+  type: string;
+  required: boolean;
+  default: unknown;
+  options: unknown[] | null;
+  constraints: Record<string, unknown>;
+}
+
+export interface AgentAuthoringNodeTransition {
+  kind: 'next' | 'on_failure' | 'branches';
+  required: boolean;
+  details: Record<string, unknown> | null;
+}
+
+export interface AgentAuthoringNodeTypeSchema {
+  type: string;
+  label: string;
+  description: string;
+  config_fields: AgentAuthoringSchemaField[];
+  transitions: AgentAuthoringNodeTransition[];
+}
+
+export interface AgentAuthoringSchemaResponse {
+  catalog_version: string;
+  template_version_pattern: string;
+  node_id_pattern: string;
+  guardrails_fields: AgentAuthoringSchemaField[];
+  node_types: AgentAuthoringNodeTypeSchema[];
+}
+
 export interface SetAgentEnabledPayload {
   enabled: boolean;
   version?: number;
@@ -62,7 +93,7 @@ export class AgentService {
   }
 
   getAuthoringSchema() {
-    return this.http.get<unknown>(`${API_BASE_URL}/agents/authoring/schema`);
+    return this.http.get<AgentAuthoringSchemaResponse>(`${API_BASE_URL}/agents/authoring/schema`);
   }
 
   getLatestAgent(name: string) {
