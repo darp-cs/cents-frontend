@@ -1,8 +1,36 @@
 <main class="guide-page">
   <header>
     <h1>Guide</h1>
-    <p>How Cents is laid out, what each area does, and how the app is put together.</p>
+    <p>How to use Cents, what is available today, and the technologies and techniques used to power it.</p>
   </header>
+
+  <section>
+    <h2>Getting started</h2>
+    <ol>
+      <li>Sign in or register from the authentication screens.</li>
+      <li>Use the left sidebar to navigate between product sections.</li>
+      <li>Use the right chat panel for conversation history, new conversations, and live chat replies.</li>
+      <li>Open Documents to upload and review ingested content.</li>
+      <li>Open Agents to manage templates and author new versions.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Current capabilities</h2>
+    <p>
+      Cents is split across three services: the Angular frontend, the FastAPI backend, and a dedicated LLM gateway.
+      Together they support the end-to-end workflows below.
+    </p>
+    <ul>
+      <li><strong>Authentication and session protection</strong> &mdash; sign in/register, route guards, and automatic auth headers on API calls.</li>
+      <li><strong>Conversation workflow</strong> &mdash; create, rename, delete, and switch conversations from the chat panel history.</li>
+      <li><strong>Streaming chat responses</strong> &mdash; assistant replies stream live using server-sent events (SSE).</li>
+      <li><strong>Document ingestion</strong> &mdash; upload files and review ingested document records.</li>
+      <li><strong>Agent management</strong> &mdash; list agent templates, inspect version history, toggle enabled state, and delete templates.</li>
+      <li><strong>Agent template authoring</strong> &mdash; create or edit JSON templates, validate them, and save as versioned updates.</li>
+      <li><strong>Model gateway features</strong> &mdash; generation and embeddings are routed through a model-catalog-driven LLM service.</li>
+    </ul>
+  </section>
 
   <section>
     <h2>Workspace layout</h2>
@@ -20,33 +48,70 @@
     <ul>
       <li><strong>Guide</strong> &mdash; this page. It is the landing view after you sign in.</li>
       <li><strong>Documents</strong> &mdash; upload files and review everything that has been ingested.</li>
-      <li><strong>Tools</strong> &mdash; tools the assistant may call during a conversation. Not available yet.</li>
-      <li><strong>Agents</strong> &mdash; review template validity, enabled state, and version history for each agent.</li>
-      <li><strong>Knowledge Base</strong> &mdash; the indexed content answers are retrieved from. Not available yet.</li>
-      <li><strong>Configuration</strong> &mdash; workspace settings, models and integrations. Not available yet.</li>
-      <li><strong>Metrics</strong> &mdash; request volume, latency, token usage and judge pass rate for a selected date range.</li>
+      <li><strong>Tools</strong> &mdash; frontend management page is not available yet.</li>
+      <li><strong>Agents</strong> &mdash; review template validity/enabled state/version history, create new templates, and edit existing templates as new versions.</li>
+      <li><strong>Knowledge Base</strong> &mdash; frontend page is not available yet.</li>
+      <li><strong>Configuration</strong> &mdash; workspace settings, models and integrations. Frontend page not available yet.</li>
+      <li><strong>Metrics</strong> &mdash; usage and quality reporting. Frontend page not available yet.</li>
     </ul>
   </section>
 
   <section>
-    <h2>Chatting</h2>
+    <h2>Conversations and chat</h2>
     <ol>
-      <li>Open the chat panel on the right.</li>
-      <li>Press <strong>History</strong> to show past conversations, then pick one, or press <strong>New</strong> to start a fresh conversation.</li>
-      <li>Type a message and press Enter. The assistant reply streams in as it is generated.</li>
-      <li>Conversations can be renamed or deleted from the history list.</li>
+      <li>Open the chat panel on the right side.</li>
+      <li>Press <strong>History</strong> to select an existing conversation or <strong>New</strong> to create one.</li>
+      <li>Type a message and submit to send it.</li>
+      <li>Assistant output streams live in the chat window using SSE.</li>
+      <li>Rename or delete conversations from history when needed.</li>
     </ol>
   </section>
 
   <section>
-    <h2>Architecture</h2>
+    <h2>Documents workflow</h2>
+    <ol>
+      <li>Open <strong>Documents</strong> in the sidebar.</li>
+      <li>Upload a document from your local machine.</li>
+      <li>Watch upload progress and status.</li>
+      <li>Review the list of ingested document records and timestamps.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Agents workflow</h2>
+    <ol>
+      <li>Open <strong>Agents</strong> from the sidebar.</li>
+      <li>Review each template's latest version, validity state, and enabled state.</li>
+      <li>Use <strong>View history</strong> to inspect version history for a template.</li>
+      <li>Use <strong>Enable</strong> or <strong>Disable</strong> to control active versions (invalid templates cannot be enabled).</li>
+      <li>Use <strong>Delete</strong> to remove a template and all versions after confirmation.</li>
+      <li>Select <strong>New agent</strong> to create a template, or <strong>Edit template</strong> on a row to create a new version from the latest saved template.</li>
+      <li>Use <strong>Validate</strong> to run backend schema and graph checks; fix any returned validation errors.</li>
+      <li>Save after validation to create a new version without overwriting prior history.</li>
+      <li>When editing, compare your draft with the latest saved template in the read-only side-by-side panel.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>API-backed capabilities</h2>
     <ul>
-      <li><strong>Angular standalone components</strong> with signals for state; there are no NgModules.</li>
-      <li><strong>Shell</strong> &mdash; <code>NavShellComponent</code> wraps the router outlet and hosts the sidebar, page area and chat panel. <code>LayoutService</code> owns collapse and width state, persisted to <code>localStorage</code> under <code>cents.layout.*</code>. <code>ResizeHandleDirective</code> implements the horizontal drag handles.</li>
-      <li><strong>Auth</strong> &mdash; <code>AuthService</code> holds the JWT in memory, <code>authInterceptor</code> attaches it to requests and signs you out on a 401, and <code>authGuard</code> protects every route except login and register.</li>
-      <li><strong>Chat</strong> &mdash; <code>ConversationService</code> manages the conversation list and the active conversation; <code>ChatService</code> sends messages and consumes the streamed response.</li>
-      <li><strong>Documents</strong> &mdash; <code>DocumentService</code> handles uploads and listing.</li>
-      <li><strong>Backend</strong> &mdash; all calls go to <code>API_BASE_URL</code>, taken from the environment files in <code>src/environments</code>.</li>
+      <li><strong>Backend service</strong> &mdash; authentication, conversations, chat streaming, configuration, document upload/list, tool register/list, and agent template/run APIs.</li>
+      <li><strong>LLM gateway</strong> &mdash; model discovery, text generation, and embeddings with folder-based model routing and optional API-key protection.</li>
+      <li><strong>Frontend integration</strong> &mdash; browser app calls backend APIs through environment-based configuration and receives streaming responses for chat.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Technologies and techniques</h2>
+    <ul>
+      <li><strong>Angular standalone architecture</strong> &mdash; component-first frontend with route guards and HTTP interceptors.</li>
+      <li><strong>Signals-based state</strong> &mdash; UI state is managed with Angular signals for predictable local reactivity.</li>
+      <li><strong>Server-Sent Events (SSE)</strong> &mdash; streamed chat responses are consumed incrementally for low-latency rendering.</li>
+      <li><strong>JWT session pattern</strong> &mdash; authenticated requests carry bearer tokens, with unauthorized responses handled centrally.</li>
+      <li><strong>FastAPI backend</strong> &mdash; async Python API layer handling auth, data, orchestration endpoints, and streaming responses.</li>
+      <li><strong>LangGraph orchestration</strong> &mdash; backend graph workflows support both main chat orchestration and isolated sub-agent templates.</li>
+      <li><strong>Hybrid persistence</strong> &mdash; relational data in SQLite and semantic vectors in Chroma.</li>
+      <li><strong>LLM gateway abstraction</strong> &mdash; model-folder routing decouples backend logic from provider-specific model names.</li>
     </ul>
   </section>
 

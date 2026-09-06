@@ -48,6 +48,9 @@
                 </td>
                 <td><strong>v{{ agent.version }}</strong></td>
                 <td class="actions">
+                  <button type="button" class="secondary edit-agent" (click)="navigateToEditAgent(agent.name)">
+                    Edit template
+                  </button>
                   <button type="button" class="secondary toggle-history" (click)="toggleVersionHistory(agent.name)">
                     {{ isHistoryExpanded(agent.name) ? 'Hide history' : 'View history' }}
                   </button>

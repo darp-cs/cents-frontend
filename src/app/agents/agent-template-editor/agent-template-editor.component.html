@@ -1,0 +1,103 @@
+<main class="agent-editor-page">
+  <header>
+    <div>
+      <h1>{{ isEditing() ? 'Edit Agent Template' : 'New Agent Template' }}</h1>
+      <p>Write JSON, validate schema and graph rules, then save as a versioned template.</p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="secondary" (click)="cancel()">Back to Agents</button>
+    </div>
+  </header>
+
+  @if (loadError()) {
+    <p class="error">{{ loadError() }}</p>
+  }
+
+  <section class="editor-card">
+    <div class="editor-toolbar">
+      <label for="agent-name">Agent name</label>
+      <input
+        id="agent-name"
+        type="text"
+        [value]="agentName()"
+        [disabled]="isEditing() || isBootstrapping() || isSaving()"
+        placeholder="e.g. ExpenseApproval"
+        (input)="onAgentNameInput($any($event.target).value)"
+      />
+    </div>
+
+    <div class="editor-grid" [class.has-baseline]="isEditing() && !!baselineJson()">
+      <section>
+        <h2>Draft Template</h2>
+        <textarea
+          class="code-editor"
+          [value]="draftJson()"
+          [disabled]="isBootstrapping() || isSaving()"
+          spellcheck="false"
+          (input)="onDraftInput($any($event.target).value)"
+        ></textarea>
+      </section>
+
+      @if (isEditing() && baselineJson()) {
+        <section>
+          <h2>Latest Saved Version (Read-only)</h2>
+          <textarea class="code-editor" [value]="baselineJson()" readonly spellcheck="false"></textarea>
+        </section>
+      }
+    </div>
+
+    <div class="action-row">
+      <button type="button" [disabled]="!canValidate()" (click)="validateTemplate()">
+        {{ validationStatus() === 'validating' ? 'Validating...' : 'Validate' }}
+      </button>
+      <button type="button" class="save" data-testid="save-agent" [disabled]="!canSave()" (click)="saveTemplate()">
+        {{ isSaving() ? 'Saving...' : 'Save' }}
+      </button>
+    </div>
+
+    @if (validationStatus() === 'valid') {
+      <p class="success">Template is valid and ready to save.</p>
+    }
+
+    @if (jsonParseError()) {
+      <p class="error">{{ jsonParseError() }}</p>
+    }
+
+    @if (validateError()) {
+      <p class="error">{{ validateError() }}</p>
+    }
+
+    @if (saveError()) {
+      <p class="error">{{ saveError() }}</p>
+    }
+
+    @if (validationNodeEntries().length > 0) {
+      <section class="validation-block">
+        <h3>Node Validation Errors</h3>
+        <ul>
+          @for (entry of validationNodeEntries(); track entry.nodeId) {
+            <li>
+              <strong>{{ entry.nodeId }}</strong>
+              <ul>
+                @for (message of entry.errors; track message) {
+                  <li>{{ message }}</li>
+                }
+              </ul>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    @if (generalValidationErrors().length > 0) {
+      <section class="validation-block">
+        <h3>General Validation Errors</h3>
+        <ul>
+          @for (message of generalValidationErrors(); track message) {
+            <li>{{ message }}</li>
+          }
+        </ul>
+      </section>
+    }
+  </section>
+</main>
