@@ -3,6 +3,28 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AgentService } from './agent.service';
 import { API_BASE_URL } from '../core/api-config';
+import { AgentTemplate } from './agent-template.models';
+
+const template: AgentTemplate = {
+  template_version: '1.0.0',
+  entry_node: 'final',
+  guardrails: {
+    max_iterations: 3,
+    banned_topics_override: null,
+    judge_enabled_override: null,
+  },
+  nodes: [
+    {
+      id: 'final',
+      type: 'terminal_response',
+      config: {
+        template: 'ok',
+        status: 'success',
+        include_state_keys: [],
+      },
+    },
+  ],
+};
 
 describe('AgentService', () => {
   let service: AgentService;
@@ -33,7 +55,7 @@ describe('AgentService', () => {
   it('calls POST /agents to create a new template', () => {
     const payload = {
       name: 'Planner',
-      raw_template: { template_version: '1.0.0' },
+      raw_template: template,
     };
 
     service.createAgentTemplate(payload.name, payload.raw_template).subscribe();
@@ -55,19 +77,19 @@ describe('AgentService', () => {
   });
 
   it('calls PUT /agents/{name} to create a new version', () => {
-    service.createAgentVersion('Planner', { template_version: '1.0.1' }).subscribe();
+    service.createAgentVersion('Planner', { ...template, template_version: '1.0.1' }).subscribe();
 
     const request = httpController.expectOne(`${API_BASE_URL}/agents/Planner`);
     expect(request.request.method).toBe('PUT');
     expect(request.request.body).toEqual({
-      raw_template: { template_version: '1.0.1' },
+      raw_template: { ...template, template_version: '1.0.1' },
     });
 
     request.flush({
       id: '2',
       name: 'Planner',
       version: 2,
-      raw_template: { template_version: '1.0.1' },
+      raw_template: { ...template, template_version: '1.0.1' },
       is_valid: true,
       validation_errors: null,
       enabled: true,
@@ -85,7 +107,7 @@ describe('AgentService', () => {
       id: '2',
       name: 'Planner',
       version: 2,
-      raw_template: { template_version: '1.0.1' },
+      raw_template: { ...template, template_version: '1.0.1' },
       is_valid: true,
       validation_errors: null,
       enabled: true,
@@ -118,7 +140,7 @@ describe('AgentService', () => {
       id: '1',
       name,
       version: 3,
-      raw_template: {},
+      raw_template: template,
       is_valid: true,
       validation_errors: null,
       enabled: true,
@@ -133,5 +155,19 @@ describe('AgentService', () => {
     expect(request.request.method).toBe('DELETE');
 
     request.flush(null);
+  });
+
+  it('calls POST /agents/authoring/validate for non-persisting validation', () => {
+    service.validateAuthoringTemplate(template).subscribe();
+
+    const request = httpController.expectOne(`${API_BASE_URL}/agents/authoring/validate`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ raw_template: template });
+
+    request.flush({
+      is_valid: true,
+      normalized_template: template,
+      errors: [],
+    });
   });
 });

@@ -2,9 +2,11 @@
   <header>
     <div>
       <h1>{{ isEditing() ? 'Edit Agent Template' : 'New Agent Template' }}</h1>
-      <p>Write JSON, validate schema and graph rules, then save as a versioned template.</p>
+      <p>Author once in one canonical draft and switch modes without creating conflicting versions.</p>
     </div>
     <div class="header-actions">
+      <span class="status-chip" [class.dirty]="isDirty()">{{ isDirty() ? 'Dirty' : 'Clean' }}</span>
+      <span class="status-chip">Baseline v{{ baselineVersion() ?? 'new' }}</span>
       <button type="button" class="secondary" (click)="cancel()">Back to Agents</button>
     </div>
   </header>
@@ -26,25 +28,269 @@
       />
     </div>
 
-    <div class="editor-grid" [class.has-baseline]="isEditing() && !!baselineJson()">
-      <section>
-        <h2>Draft Template</h2>
-        <textarea
-          class="code-editor"
-          [value]="draftJson()"
-          [disabled]="isBootstrapping() || isSaving()"
-          spellcheck="false"
-          (input)="onDraftInput($any($event.target).value)"
-        ></textarea>
-      </section>
-
-      @if (isEditing() && baselineJson()) {
-        <section>
-          <h2>Latest Saved Version (Read-only)</h2>
-          <textarea class="code-editor" [value]="baselineJson()" readonly spellcheck="false"></textarea>
-        </section>
-      }
+    <div class="mode-tabs">
+      <button type="button" [class.active]="editorMode() === 'natural-language'" (click)="setEditorMode('natural-language')">
+        Natural Language
+      </button>
+      <button type="button" [class.active]="editorMode() === 'visual-graph'" (click)="setEditorMode('visual-graph')">
+        Visual Graph
+      </button>
+      <button type="button" [class.active]="editorMode() === 'advanced-json'" (click)="setEditorMode('advanced-json')">
+        Advanced JSON Preview
+      </button>
     </div>
+
+    @if (editorMode() === 'natural-language') {
+      <section class="mode-panel natural-mode">
+        <h2>Workflow Narrative</h2>
+        <div class="field-grid">
+          <label>
+            Template version
+            <input
+              type="text"
+              [value]="template().template_version"
+              [disabled]="isBootstrapping() || isSaving()"
+              (input)="onTemplateVersionInput($any($event.target).value)"
+            />
+          </label>
+
+          <label>
+            Entry node
+            <select
+              [value]="template().entry_node"
+              [disabled]="isBootstrapping() || isSaving()"
+              (change)="onEntryNodeInput($any($event.target).value)"
+            >
+              @for (nodeId of nodeIds(); track nodeId) {
+                <option [value]="nodeId">{{ nodeId }}</option>
+              }
+            </select>
+          </label>
+
+          <label>
+            Guardrail max iterations
+            <input
+              type="number"
+              min="1"
+              [value]="template().guardrails.max_iterations"
+              [disabled]="isBootstrapping() || isSaving()"
+              (input)="onMaxIterationsInput($any($event.target).value)"
+            />
+          </label>
+
+          <label>
+            Judge override
+            <select
+              [value]="template().guardrails.judge_enabled_override === null ? 'null' : (template().guardrails.judge_enabled_override ? 'true' : 'false')"
+              [disabled]="isBootstrapping() || isSaving()"
+              (change)="onJudgeOverrideInput($any($event.target).value)"
+            >
+              <option value="null">inherit platform</option>
+              <option value="true">force enabled</option>
+              <option value="false">force disabled</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Banned topic override (comma-separated)
+          <input
+            type="text"
+            [value]="(template().guardrails.banned_topics_override ?? []).join(', ')"
+            [disabled]="isBootstrapping() || isSaving()"
+            (input)="onBannedTopicsInput($any($event.target).value)"
+          />
+        </label>
+
+        <div class="narrative-list">
+          @for (node of template().nodes; track node.id) {
+            <article class="narrative-node">
+              <div class="node-title-row">
+                <h3>{{ node.id }}</h3>
+                <span class="node-type">{{ node.type }}</span>
+              </div>
+              <textarea
+                [value]="node.description ?? ''"
+                [disabled]="isBootstrapping() || isSaving()"
+                rows="2"
+                (input)="onNodeDescriptionInput(node.id, $any($event.target).value)"
+              ></textarea>
+
+              @if (node.type === 'condition') {
+                <p class="transition-text">Branches: {{ branchEntries(node).length }}</p>
+              }
+              @if (node.type !== 'condition' && node.type !== 'terminal_response') {
+                <p class="transition-text">Next: {{ node.next }}</p>
+              }
+            </article>
+          }
+        </div>
+
+        @if (!isEditing()) {
+          <button type="button" class="secondary" (click)="resetToStarter()">Reset To Starter</button>
+        }
+      </section>
+    }
+
+    @if (editorMode() === 'visual-graph') {
+      <section class="mode-panel graph-mode">
+        <h2>Graph Node Map</h2>
+
+        @if (graphEditError()) {
+          <p class="error">{{ graphEditError() }}</p>
+        }
+
+        <div class="graph-node-grid">
+          @for (node of template().nodes; track node.id) {
+            <article
+              class="graph-node"
+              [class.selected]="nodeLayoutById(node.id).selected"
+              (click)="onNodeSelected(node.id)"
+            >
+              <div class="node-title-row">
+                <input
+                  type="text"
+                  [value]="node.id"
+                  [disabled]="isBootstrapping() || isSaving()"
+                  (input)="onNodeIdInput(node.id, $any($event.target).value)"
+                />
+                <span class="node-type">{{ node.type }}</span>
+              </div>
+
+              <textarea
+                rows="2"
+                [value]="node.description ?? ''"
+                [disabled]="isBootstrapping() || isSaving()"
+                (input)="onNodeDescriptionInput(node.id, $any($event.target).value)"
+              ></textarea>
+
+              <div class="layout-row">
+                <label>
+                  X
+                  <input
+                    type="number"
+                    [value]="nodeLayoutById(node.id).x"
+                    [disabled]="isBootstrapping() || isSaving()"
+                    (input)="onNodeCoordinateInput(node.id, 'x', $any($event.target).value)"
+                  />
+                </label>
+                <label>
+                  Y
+                  <input
+                    type="number"
+                    [value]="nodeLayoutById(node.id).y"
+                    [disabled]="isBootstrapping() || isSaving()"
+                    (input)="onNodeCoordinateInput(node.id, 'y', $any($event.target).value)"
+                  />
+                </label>
+              </div>
+
+              @if (node.type !== 'condition' && node.type !== 'terminal_response') {
+                <label>
+                  Next
+                  <select
+                    [value]="node.next"
+                    [disabled]="isBootstrapping() || isSaving()"
+                    (change)="onNodeNextInput(node.id, $any($event.target).value)"
+                  >
+                    @for (nodeId of nodeIds(); track nodeId) {
+                      <option [value]="nodeId">{{ nodeId }}</option>
+                    }
+                  </select>
+                </label>
+              }
+
+              @if (node.type === 'structured_parser' || node.type === 'service_call' || node.type === 'llm_step') {
+                <label>
+                  On failure
+                  <select
+                    [value]="node.on_failure ?? ''"
+                    [disabled]="isBootstrapping() || isSaving()"
+                    (change)="onNodeFailureInput(node.id, $any($event.target).value)"
+                  >
+                    <option value="">none</option>
+                    @for (nodeId of nodeIds(); track nodeId) {
+                      <option [value]="nodeId">{{ nodeId }}</option>
+                    }
+                  </select>
+                </label>
+              }
+
+              @if (node.type === 'condition') {
+                <div class="branch-editor">
+                  <h4>Branches</h4>
+                  @for (branch of branchEntries(node); track branch.label) {
+                    <div class="branch-row">
+                      <input
+                        type="text"
+                        [value]="branch.label"
+                        [disabled]="isBootstrapping() || isSaving()"
+                        (change)="onConditionBranchNameInput(node.id, branch.label, $any($event.target).value)"
+                      />
+                      <select
+                        [value]="branch.target"
+                        [disabled]="isBootstrapping() || isSaving()"
+                        (change)="onConditionBranchTargetInput(node.id, branch.label, $any($event.target).value)"
+                      >
+                        @for (nodeId of nodeIds(); track nodeId) {
+                          <option [value]="nodeId">{{ nodeId }}</option>
+                        }
+                      </select>
+                      <button
+                        type="button"
+                        class="secondary"
+                        [disabled]="branch.label === 'default'"
+                        (click)="removeConditionBranch(node.id, branch.label)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  }
+                  <button type="button" class="secondary" (click)="addConditionBranch(node.id)">Add branch</button>
+                </div>
+              }
+
+              <label>
+                Config JSON
+                <textarea
+                  class="mini-editor"
+                  rows="6"
+                  [value]="nodeConfigJson(node)"
+                  [disabled]="isBootstrapping() || isSaving()"
+                  spellcheck="false"
+                  (input)="onNodeConfigInput(node.id, $any($event.target).value)"
+                ></textarea>
+              </label>
+
+              @if (nodeConfigErrors()[node.id]) {
+                <p class="error">{{ nodeConfigErrors()[node.id] }}</p>
+              }
+            </article>
+          }
+        </div>
+      </section>
+    }
+
+    @if (editorMode() === 'advanced-json') {
+      <section class="mode-panel">
+        <div class="preview-actions">
+          <h2>Canonical JSON Preview (Read-only)</h2>
+          <button type="button" class="secondary" (click)="copyJsonPreview()">Copy JSON</button>
+        </div>
+        <textarea class="code-editor" [value]="draftJsonPreview()" readonly spellcheck="false"></textarea>
+
+        @if (exportMessage()) {
+          <p class="success">{{ exportMessage() }}</p>
+        }
+      </section>
+    }
+
+    @if (isEditing() && baselineJson()) {
+      <section>
+        <h2>Latest Saved Version (Read-only)</h2>
+        <textarea class="code-editor baseline" [value]="baselineJson()" readonly spellcheck="false"></textarea>
+      </section>
+    }
 
     <div class="action-row">
       <button type="button" [disabled]="!canValidate()" (click)="validateTemplate()">
@@ -57,10 +303,6 @@
 
     @if (validationStatus() === 'valid') {
       <p class="success">Template is valid and ready to save.</p>
-    }
-
-    @if (jsonParseError()) {
-      <p class="error">{{ jsonParseError() }}</p>
     }
 
     @if (validateError()) {
