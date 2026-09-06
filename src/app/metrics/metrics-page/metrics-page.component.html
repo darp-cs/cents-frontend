@@ -1,0 +1,97 @@
+<main class="metrics-page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Operations overview</p>
+      <h1>Metrics</h1>
+      <p>See request volume, responsiveness, token usage, and evaluation quality.</p>
+    </div>
+
+    <form class="date-range" (ngSubmit)="refresh()">
+      <label>
+        <span>From</span>
+        <input type="date" name="from" [(ngModel)]="from" />
+      </label>
+      <label>
+        <span>To</span>
+        <input type="date" name="to" [(ngModel)]="to" />
+      </label>
+      <button type="submit" [disabled]="isLoading()">Refresh</button>
+    </form>
+  </header>
+
+  @if (isLoading()) {
+    <p class="status">Loading metrics...</p>
+  }
+
+  @if (error()) {
+    <p class="status error">{{ error() }}</p>
+  } @else if (!isLoading() && (!summary() || summary()?.total_requests === 0)) {
+    <section class="empty-state">
+      <span class="empty-mark" aria-hidden="true">—</span>
+      <h2>No metrics yet</h2>
+      <p>Request metrics will appear here once the workspace has processed traffic.</p>
+    </section>
+  } @else if (summary(); as metrics) {
+    <section class="summary-grid" aria-label="Metrics summary">
+      <article class="summary-card requests">
+        <span class="card-label">Total requests</span>
+        <strong>{{ formatNumber(metrics.total_requests) }}</strong>
+        <span class="card-detail">Across the selected period</span>
+      </article>
+      <article class="summary-card latency">
+        <span class="card-label">Average latency</span>
+        <strong>{{ formatLatency(metrics.average_latency_ms) }}</strong>
+        <span class="card-detail">P95: {{ formatLatency(metrics.p95_latency_ms) }}</span>
+      </article>
+      <article class="summary-card quality">
+        <span class="card-label">Judge pass rate</span>
+        <strong>{{ formatRate(metrics.judge_pass_rate) }}</strong>
+        <span class="card-detail">Evaluation results</span>
+      </article>
+      <article class="summary-card tokens">
+        <span class="card-label">Total tokens</span>
+        <strong>{{ formatNumber(metrics.total_tokens) }}</strong>
+        <span class="card-detail">Input and output combined</span>
+      </article>
+    </section>
+
+    <section class="node-breakdown">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Request distribution</p>
+          <h2>By node key</h2>
+        </div>
+        <span>{{ metrics.by_node_key.length }} nodes</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Node key</th>
+              <th scope="col">Requests</th>
+              <th scope="col">Volume</th>
+              <th scope="col">Avg latency</th>
+              <th scope="col">P95 latency</th>
+              <th scope="col">Tokens</th>
+              <th scope="col">Pass rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (node of metrics.by_node_key; track node.node_key) {
+              <tr>
+                <th scope="row">{{ node.node_key }}</th>
+                <td>{{ formatNumber(node.requests) }}</td>
+                <td class="volume"><span [style.width]="barWidth(node.requests)"></span></td>
+                <td>{{ formatLatency(node.average_latency_ms) }}</td>
+                <td>{{ formatLatency(node.p95_latency_ms) }}</td>
+                <td>{{ formatNumber(node.total_tokens) }}</td>
+                <td>{{ formatRate(node.judge_pass_rate) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+</main>
