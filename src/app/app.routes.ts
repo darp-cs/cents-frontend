@@ -4,6 +4,7 @@ import { RegisterComponent } from './auth/register/register.component';
 import { authGuard } from './auth/auth.guard';
 import { DocumentsPageComponent } from './documents/documents-page/documents-page.component';
 import { GuidePageComponent } from './guide/guide-page/guide-page.component';
+import { MetricsPageComponent } from './metrics/metrics-page/metrics-page.component';
 import { PlaceholderPageComponent } from './shell/placeholder-page/placeholder-page.component';
 
 export const routes: Routes = [
@@ -64,11 +65,7 @@ export const routes: Routes = [
 	{
 		path: 'metrics',
 		canActivate: [authGuard],
-		component: PlaceholderPageComponent,
-		data: {
-			title: 'Metrics',
-			description: 'Track usage, latency and cost across your conversations.',
-		},
+		component: MetricsPageComponent,
 	},
 	{
 		path: '',
