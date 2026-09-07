@@ -1,13 +1,20 @@
 <main class="agent-editor-page">
-  <header>
-    <div>
+  <header class="editor-header">
+    <div class="editor-title">
       <h1>{{ isEditing() ? 'Edit Agent Template' : 'New Agent Template' }}</h1>
-      <p>Author once in one canonical draft and switch modes without creating conflicting versions.</p>
+      <div class="editor-status" aria-label="Draft status">
+        <span class="status-chip" [class.dirty]="isDirty()">{{ isDirty() ? 'Unsaved changes' : 'Saved' }}</span>
+        <span class="status-chip">Version {{ baselineVersion() ?? 'new' }}</span>
+      </div>
     </div>
     <div class="header-actions">
-      <span class="status-chip" [class.dirty]="isDirty()">{{ isDirty() ? 'Dirty' : 'Clean' }}</span>
-      <span class="status-chip">Baseline v{{ baselineVersion() ?? 'new' }}</span>
       <button type="button" class="secondary" (click)="cancel()">Back to Agents</button>
+      <button type="button" class="secondary" [disabled]="!canValidate()" (click)="validateTemplate()">
+        {{ validationStatus() === 'validating' ? 'Validating...' : 'Validate' }}
+      </button>
+      <button type="button" class="save" data-testid="save-agent" [disabled]="!canSave()" (click)="saveTemplate()">
+        {{ isSaving() ? 'Saving...' : 'Save' }}
+      </button>
     </div>
   </header>
 
@@ -15,427 +22,179 @@
     <p class="error">{{ loadError() }}</p>
   }
 
-  <section class="editor-card">
+  <section class="editor-workspace">
     <div class="editor-toolbar">
-      <label for="agent-name">Agent name</label>
-      <input
-        id="agent-name"
-        type="text"
-        [value]="agentName()"
-        [disabled]="isEditing() || isBootstrapping() || isSaving()"
-        placeholder="e.g. ExpenseApproval"
-        (input)="onAgentNameInput($any($event.target).value)"
-      />
-    </div>
+      <label class="agent-name-field" for="agent-name">
+        <span>Agent name</span>
+        <input
+          id="agent-name"
+          type="text"
+          [value]="agentName()"
+          [disabled]="isEditing() || isBootstrapping() || isSaving()"
+          placeholder="e.g. ExpenseApproval"
+          (input)="onAgentNameInput($any($event.target).value)"
+        />
+      </label>
 
-    <div class="mode-tabs">
-      <button type="button" [class.active]="editorMode() === 'natural-language'" (click)="setEditorMode('natural-language')">
-        Natural Language
-      </button>
-      <button type="button" [class.active]="editorMode() === 'visual-graph'" (click)="setEditorMode('visual-graph')">
-        Visual Graph
-      </button>
-      <button type="button" [class.active]="editorMode() === 'advanced-json'" (click)="setEditorMode('advanced-json')">
-        Advanced JSON Preview
-      </button>
+      <label class="example-field" for="example-template">
+        <span>Example sub-agents</span>
+        <div class="example-controls">
+          <select
+            id="example-template"
+            [value]="selectedExampleId()"
+            [disabled]="isBootstrapping() || isSaving()"
+            (change)="onExampleSelectionInput($any($event.target).value)"
+          >
+            @for (example of examples; track example.id) {
+              <option [value]="example.id">{{ example.name }}</option>
+            }
+          </select>
+          <button type="button" class="secondary" [disabled]="isBootstrapping() || isSaving()" (click)="applySelectedExample()">
+            Load example
+          </button>
+        </div>
+      </label>
+
+      <nav class="mode-tabs" aria-label="Editor mode">
+        <button
+          type="button"
+          [class.active]="editorMode() === 'natural-language'"
+          [attr.aria-current]="editorMode() === 'natural-language' ? 'page' : null"
+          (click)="setEditorMode('natural-language')"
+        >
+          Natural Language
+        </button>
+        <button
+          type="button"
+          [class.active]="editorMode() === 'visual-graph'"
+          [attr.aria-current]="editorMode() === 'visual-graph' ? 'page' : null"
+          (click)="setEditorMode('visual-graph')"
+        >
+          Visual Graph
+        </button>
+        <button
+          type="button"
+          [class.active]="editorMode() === 'advanced-json'"
+          [attr.aria-current]="editorMode() === 'advanced-json' ? 'page' : null"
+          (click)="setEditorMode('advanced-json')"
+        >
+          JSON Preview
+        </button>
+      </nav>
     </div>
 
     @if (editorMode() === 'natural-language') {
       <section class="mode-panel natural-mode">
-        <div class="conversation-heading">
+        <div class="mode-heading">
           <div>
             <span class="section-eyebrow">Natural language</span>
-            <h2>Describe your workflow</h2>
+            <h2>Workflow source</h2>
           </div>
-          <span class="entry-badge">Starts at {{ template().entry_node }}</span>
-        </div>
-
-        <section class="prompt-workbench" aria-label="Workflow description conversation">
-          <div class="authoring-thread" aria-live="polite">
-            @for (message of authoringMessages(); track $index) {
-              <article
-                class="authoring-message"
-                [class.user-message]="message.role === 'user'"
-                [class.assistant-message]="message.role === 'assistant'"
-                [class.not-applied]="message.status === 'not-applied'"
-              >
-                <span>{{ message.role === 'user' ? 'You' : 'Cents' }}</span>
-                <p>{{ message.content }}</p>
-                @if (message.status === 'applied') {
-                  <small>Applied to the draft</small>
-                }
-              </article>
+          <div class="mode-actions">
+            @if (generationMessage()) {
+              <span class="entry-badge">Graph updated</span>
             }
-            @if (isGenerating()) {
-              <article class="authoring-message assistant-message pending-message">
-                <span>Cents</span>
-                <p>Building and validating the workflow...</p>
-              </article>
-            }
-          </div>
-
-          <label class="prompt-composer">
-            Workflow description
-            <textarea
-              rows="6"
-              [value]="authoringPrompt()"
-              [disabled]="isGenerating() || isBootstrapping() || isSaving()"
-              placeholder="Build an expense approval workflow. /listen for amount, /if it is over 1000, update @request_authorization, then /reply using #service_results."
-              (input)="onAuthoringPromptInput($any($event.target).value)"
-              (keydown.control.enter)="generateFromDescription()"
-            ></textarea>
-          </label>
-
-          <div class="token-tray" aria-label="Prompt references and workflow units">
-            <details open>
-              <summary><code>@</code> Components</summary>
-              <div class="token-list">
-                @for (item of componentReferenceTokens(); track item.token) {
-                  <button
-                    type="button"
-                    [title]="item.description"
-                    [disabled]="isGenerating()"
-                    (click)="insertAuthoringToken(item.token)"
-                  >
-                    <code>{{ item.token }}</code>
-                    <span>{{ item.description }}</span>
-                  </button>
-                }
-              </div>
-            </details>
-
-            <details>
-              <summary><code>#</code> Runtime data</summary>
-              <div class="token-list">
-                @for (item of dataReferenceTokens; track item.token) {
-                  <button
-                    type="button"
-                    [title]="item.description"
-                    [disabled]="isGenerating()"
-                    (click)="insertAuthoringToken(item.token)"
-                  >
-                    <code>{{ item.token }}</code>
-                    <span>{{ item.description }}</span>
-                  </button>
-                }
-              </div>
-            </details>
-
-            <details>
-              <summary><code>/</code> Workflow units</summary>
-              <div class="token-list">
-                @for (item of unitCommandTokens; track item.token) {
-                  <button
-                    type="button"
-                    [title]="item.description"
-                    [disabled]="isGenerating()"
-                    (click)="insertAuthoringToken(item.token)"
-                  >
-                    <code>{{ item.token }}</code>
-                    <span>{{ item.description }}</span>
-                  </button>
-                }
-              </div>
-            </details>
-          </div>
-
-          <div class="prompt-actions">
-            <span>Use Ctrl+Enter to generate.</span>
             <button
               type="button"
               [disabled]="!canGenerate() || isBootstrapping() || isSaving()"
               (click)="generateFromDescription()"
             >
-              {{ isGenerating() ? 'Generating...' : 'Generate workflow' }}
+              {{ isGenerating() ? 'Building graph...' : 'Build graph' }}
             </button>
           </div>
+        </div>
+
+        <section class="workflow-source-editor" aria-label="Natural language workflow source">
+          <textarea
+            class="workflow-source"
+            rows="22"
+            aria-label="Workflow source"
+            spellcheck="true"
+            [value]="authoringPrompt()"
+            [placeholder]="workflowSourcePlaceholder"
+            [disabled]="isGenerating() || isBootstrapping() || isSaving()"
+            (input)="onAuthoringPromptInput($any($event.target).value)"
+            (keydown.control.enter)="generateFromDescription()"
+            (keydown.meta.enter)="generateFromDescription()"
+          ></textarea>
+
+          @if (generationMessage()) {
+            <p class="success" aria-live="polite">{{ generationMessage() }}</p>
+          }
 
           @if (generationError()) {
-            <p class="error">{{ generationError() }}</p>
+            <p class="error" aria-live="polite">{{ generationError() }}</p>
           }
         </section>
-
-        <div class="draft-heading">
-          <span class="section-eyebrow">Current draft</span>
-          <h2>Conversation flow</h2>
-        </div>
-
-        <div class="conversation-list">
-          @for (node of template().nodes; track node.id; let stepIndex = $index) {
-            <article class="conversation-step" [class.condition-step]="node.type === 'condition'">
-              <div class="turn-rail" aria-hidden="true">
-                <span>{{ stepIndex + 1 }}</span>
-                <i></i>
-              </div>
-
-              <div class="turn-body">
-                <header class="turn-header">
-                  <div>
-                    <span class="turn-verb">
-                      @switch (node.type) {
-                        @case ('structured_parser') { Listen }
-                        @case ('condition') { Decide }
-                        @case ('service_call') { Act }
-                        @case ('user_interrupt') { Ask }
-                        @case ('llm_step') { Think }
-                        @case ('terminal_response') { Reply }
-                      }
-                    </span>
-                    <h3>{{ node.id }}</h3>
-                  </div>
-                  <span class="node-type">{{ nodeTypeIcon(node) }} {{ nodeTypeLabel(node) }}</span>
-                </header>
-
-                <label class="step-note">
-                  Step note
-                  <input
-                    type="text"
-                    [value]="node.description ?? ''"
-                    [disabled]="isBootstrapping() || isSaving()"
-                    (input)="onNodeDescriptionInput(node.id, $any($event.target).value)"
-                  />
-                </label>
-
-                @switch (node.type) {
-                  @case ('structured_parser') {
-                    <div class="conversation-line">
-                      <span class="speaker-label">User says</span>
-                      <span>Capture {{ node.config.fields.length }} structured {{ node.config.fields.length === 1 ? 'field' : 'fields' }}.</span>
-                    </div>
-                    @if (node.config.strategy === 'llm') {
-                      <label class="prompt-field">
-                        Extraction instructions
-                        <textarea
-                          rows="4"
-                          [value]="node.config.llm_prompt_instructions ?? ''"
-                          [disabled]="isBootstrapping() || isSaving()"
-                          (input)="onNodePromptInput(node.id, $any($event.target).value)"
-                        ></textarea>
-                      </label>
-                    }
-                  }
-                  @case ('condition') {
-                    <section class="if-block" aria-label="Conditional routes">
-                      <label class="if-expression">
-                        <span>IF</span>
-                        <textarea
-                          rows="2"
-                          spellcheck="false"
-                          [value]="node.config.expression"
-                          [disabled]="isBootstrapping() || isSaving()"
-                          (input)="onNodePromptInput(node.id, $any($event.target).value)"
-                        ></textarea>
-                      </label>
-
-                      <div class="branch-list">
-                        @for (branch of branchEntries(node); track branch.label; let branchIndex = $index) {
-                          <label class="branch-line">
-                            <span>{{ branchConversationLabel(branch.label, branchIndex) }}</span>
-                            <select
-                              [value]="branch.target"
-                              [disabled]="isBootstrapping() || isSaving()"
-                              (change)="onConditionBranchTargetInput(node.id, branch.label, $any($event.target).value)"
-                            >
-                              @for (nodeId of nodeIds(); track nodeId) {
-                                <option [value]="nodeId">go to {{ nodeId }}</option>
-                              }
-                            </select>
-                          </label>
-                        }
-                      </div>
-                    </section>
-                  }
-                  @case ('service_call') {
-                    <div class="conversation-line">
-                      <span class="speaker-label">Run</span>
-                      <code>{{ node.config.method }} {{ node.config.url || node.config.tool_name || 'service' }}</code>
-                    </div>
-                  }
-                  @case ('user_interrupt') {
-                    <label class="prompt-field">
-                      Ask the user
-                      <textarea
-                        rows="4"
-                        [value]="node.config.prompt"
-                        [disabled]="isBootstrapping() || isSaving()"
-                        (input)="onNodePromptInput(node.id, $any($event.target).value)"
-                      ></textarea>
-                    </label>
-                  }
-                  @case ('llm_step') {
-                    <label class="prompt-field">
-                      Model instructions
-                      <textarea
-                        rows="5"
-                        [value]="node.config.system_prompt"
-                        [disabled]="isBootstrapping() || isSaving()"
-                        (input)="onNodePromptInput(node.id, $any($event.target).value)"
-                      ></textarea>
-                    </label>
-                  }
-                  @case ('terminal_response') {
-                    <label class="prompt-field reply-field">
-                      Reply with
-                      <textarea
-                        rows="3"
-                        [value]="node.config.template"
-                        [disabled]="isBootstrapping() || isSaving()"
-                        (input)="onNodePromptInput(node.id, $any($event.target).value)"
-                      ></textarea>
-                    </label>
-                  }
-                }
-
-                @if (node.type !== 'condition' && node.type !== 'terminal_response') {
-                  <div class="transition-controls">
-                    <label>
-                      Then go to
-                      <select
-                        [value]="node.next"
-                        [disabled]="isBootstrapping() || isSaving()"
-                        (change)="onNextNodeInput(node.id, $any($event.target).value)"
-                      >
-                        @for (nodeId of nodeIds(); track nodeId) {
-                          <option [value]="nodeId">{{ nodeId }}</option>
-                        }
-                      </select>
-                    </label>
-
-                    @if (node.type === 'structured_parser' || node.type === 'service_call' || node.type === 'llm_step') {
-                      <label>
-                        If this fails
-                        <select
-                          [value]="node.on_failure ?? ''"
-                          [disabled]="isBootstrapping() || isSaving()"
-                          (change)="onFailureNodeInput(node.id, $any($event.target).value)"
-                        >
-                          <option value="">No failure route</option>
-                          @for (nodeId of nodeIds(); track nodeId) {
-                            <option [value]="nodeId">go to {{ nodeId }}</option>
-                          }
-                        </select>
-                      </label>
-                    }
-                  </div>
-                }
-              </div>
-            </article>
-          }
-        </div>
-
-        <details class="workflow-settings">
-          <summary>Workflow settings</summary>
-          <div class="field-grid">
-            <label>
-              Template version
-              <input
-                type="text"
-                [value]="template().template_version"
-                [disabled]="isBootstrapping() || isSaving()"
-                (input)="onTemplateVersionInput($any($event.target).value)"
-              />
-            </label>
-
-            <label>
-              Entry node
-              <select
-                [value]="template().entry_node"
-                [disabled]="isBootstrapping() || isSaving()"
-                (change)="onEntryNodeInput($any($event.target).value)"
-              >
-                @for (nodeId of nodeIds(); track nodeId) {
-                  <option [value]="nodeId">{{ nodeId }}</option>
-                }
-              </select>
-            </label>
-
-            <label>
-              Maximum iterations
-              <input
-                type="number"
-                min="1"
-                [value]="template().guardrails.max_iterations"
-                [disabled]="isBootstrapping() || isSaving()"
-                (input)="onMaxIterationsInput($any($event.target).value)"
-              />
-            </label>
-
-            <label>
-              Judge override
-              <select
-                [value]="template().guardrails.judge_enabled_override === null ? 'null' : (template().guardrails.judge_enabled_override ? 'true' : 'false')"
-                [disabled]="isBootstrapping() || isSaving()"
-                (change)="onJudgeOverrideInput($any($event.target).value)"
-              >
-                <option value="null">Inherit platform</option>
-                <option value="true">Force enabled</option>
-                <option value="false">Force disabled</option>
-              </select>
-            </label>
-          </div>
-
-          <label>
-            Banned topics
-            <input
-              type="text"
-              [value]="(template().guardrails.banned_topics_override ?? []).join(', ')"
-              [disabled]="isBootstrapping() || isSaving()"
-              (input)="onBannedTopicsInput($any($event.target).value)"
-            />
-          </label>
-        </details>
-
-        @if (!isEditing()) {
-          <button type="button" class="secondary" (click)="resetToStarter()">Reset To Starter</button>
-        }
       </section>
     }
 
     @if (editorMode() === 'visual-graph') {
       <section class="mode-panel graph-mode">
-        <h2>Workflow Canvas</h2>
+        <div class="mode-heading compact-heading">
+          <div>
+            <span class="section-eyebrow">Visual graph</span>
+            <h2>Workflow canvas</h2>
+          </div>
+        </div>
         <app-agent-workflow-canvas
           [graph]="graph()"
           [layout]="graphLayout()"
           [palette]="paletteItems()"
+          [availableTools]="availableTools()"
+          [toolsLoading]="toolsLoading()"
+          [toolsError]="toolsError()"
           [paletteLoading]="paletteLoading()"
           [paletteError]="paletteError()"
           [disabled]="isBootstrapping() || isSaving()"
+          [assistingNodeId]="assistingNodeId()"
+          [nodeAssistError]="nodeAssistError()"
           (graphChange)="onGraphChanged($event)"
           (layoutChange)="onGraphLayoutChanged($event)"
+          (nodeAssistRequested)="onNodeAssistRequested($event)"
         ></app-agent-workflow-canvas>
+
+        <section class="workflow-equivalent" aria-label="Natural language equivalent">
+          <div class="mode-heading compact-heading">
+            <div>
+              <span class="section-eyebrow">Equivalent source</span>
+              <h2>Natural language mirror</h2>
+            </div>
+          </div>
+          <textarea class="code-editor" [value]="graphEquivalentSource()" readonly spellcheck="false"></textarea>
+        </section>
       </section>
     }
 
     @if (editorMode() === 'advanced-json') {
-      <section class="mode-panel">
-        <div class="preview-actions">
-          <h2>Canonical JSON Preview (Read-only)</h2>
+      <section class="mode-panel json-mode">
+        <div class="mode-heading">
+          <div>
+            <span class="section-eyebrow">Advanced</span>
+            <h2>Canonical JSON</h2>
+          </div>
           <button type="button" class="secondary" (click)="copyJsonPreview()">Copy JSON</button>
         </div>
-        <textarea class="code-editor" [value]="draftJsonPreview()" readonly spellcheck="false"></textarea>
+
+        <div class="json-workspace">
+          <section class="json-pane">
+            <h3>Current draft</h3>
+            <textarea class="code-editor" [value]="draftJsonPreview()" readonly spellcheck="false"></textarea>
+          </section>
+
+          @if (isEditing() && baselineJson()) {
+            <section class="json-pane">
+              <h3>Latest saved version</h3>
+              <textarea class="code-editor" [value]="baselineJson()" readonly spellcheck="false"></textarea>
+            </section>
+          }
+        </div>
 
         @if (exportMessage()) {
           <p class="success">{{ exportMessage() }}</p>
         }
       </section>
     }
-
-    @if (isEditing() && baselineJson()) {
-      <section>
-        <h2>Latest Saved Version (Read-only)</h2>
-        <textarea class="code-editor baseline" [value]="baselineJson()" readonly spellcheck="false"></textarea>
-      </section>
-    }
-
-    <div class="action-row">
-      <button type="button" [disabled]="!canValidate()" (click)="validateTemplate()">
-        {{ validationStatus() === 'validating' ? 'Validating...' : 'Validate' }}
-      </button>
-      <button type="button" class="save" data-testid="save-agent" [disabled]="!canSave()" (click)="saveTemplate()">
-        {{ isSaving() ? 'Saving...' : 'Save' }}
-      </button>
-    </div>
 
     @if (validationStatus() === 'valid') {
       <p class="success">Template is valid and ready to save.</p>

@@ -34,6 +34,20 @@ export interface AgentAuthoringGenerateResponse {
   referenced_nodes: string[];
 }
 
+export interface AgentAuthoringNodeAssistRequest {
+  node_type: string;
+  instruction: string;
+  current_node: unknown;
+  current_template: unknown | null;
+}
+
+export interface AgentAuthoringNodeAssistResponse {
+  message: string;
+  node: unknown | null;
+  is_valid: boolean;
+  errors: AgentAuthoringValidationError[];
+}
+
 export interface AgentAuthoringSchemaField {
   name: string;
   type: string;
@@ -100,11 +114,15 @@ export class AgentService {
     });
   }
 
-  generateAuthoringTemplate(prompt: string, currentTemplate: AgentTemplate) {
+  generateAuthoringTemplate(prompt: string, currentTemplate: AgentTemplate | null) {
     return this.http.post<AgentAuthoringGenerateResponse>(`${API_BASE_URL}/agents/authoring/generate`, {
       prompt,
       current_template: currentTemplate,
     });
+  }
+
+  assistAuthoringNode(payload: AgentAuthoringNodeAssistRequest) {
+    return this.http.post<AgentAuthoringNodeAssistResponse>(`${API_BASE_URL}/agents/authoring/node-assist`, payload);
   }
 
   getAuthoringSchema() {

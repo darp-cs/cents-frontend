@@ -73,6 +73,22 @@ export interface Guardrails {
   judge_enabled_override: boolean | null;
 }
 
+export interface AgentCanvasLayoutNodePosition {
+  x: number;
+  y: number;
+}
+
+export interface AgentCanvasLayoutViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface AgentCanvasLayout {
+  node_positions: Record<string, AgentCanvasLayoutNodePosition>;
+  viewport?: AgentCanvasLayoutViewport | null;
+}
+
 interface BaseNode {
   id: string;
   description?: string | null;
@@ -129,6 +145,7 @@ export interface AgentTemplate {
   entry_node: string;
   nodes: AgentTemplateNode[];
   guardrails: Guardrails;
+  canvas_layout?: AgentCanvasLayout | null;
 }
 
 export function cloneTemplate(template: AgentTemplate): AgentTemplate {
@@ -147,6 +164,9 @@ export function isAgentTemplate(value: unknown): value is AgentTemplate {
     Array.isArray(candidate['nodes']) &&
     typeof candidate['guardrails'] === 'object' &&
     candidate['guardrails'] !== null &&
-    !Array.isArray(candidate['guardrails'])
+    !Array.isArray(candidate['guardrails']) &&
+    (!('canvas_layout' in candidate) ||
+      candidate['canvas_layout'] === null ||
+      (typeof candidate['canvas_layout'] === 'object' && !Array.isArray(candidate['canvas_layout'])))
   );
 }

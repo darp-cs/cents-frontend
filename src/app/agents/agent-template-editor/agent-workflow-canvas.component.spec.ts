@@ -1,6 +1,14 @@
 import '../../../test-setup';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FCreateConnectionEvent, FDeleteSelectedEvent, FReassignConnectionEvent } from '@foblex/flow';
+import { By } from '@angular/platform-browser';
+import {
+  FConnectorDirective,
+  FCreateConnectionEvent,
+  FDeleteSelectedEvent,
+  FNodeDirective,
+  FReassignConnectionEvent,
+  FSelectionChangeEvent,
+} from '@foblex/flow';
 import { AgentTemplateGraph } from '../agent-template-graph.adapters';
 import { AgentTemplate } from '../agent-template.models';
 import { templateToGraph } from '../agent-template-graph.adapters';
@@ -8,12 +16,12 @@ import { GraphLayoutState } from './agent-template-draft.store';
 import { AgentCanvasPaletteItem, AgentWorkflowCanvasComponent } from './agent-workflow-canvas.component';
 
 const palette: AgentCanvasPaletteItem[] = [
-  { type: 'structured_parser', label: 'Structured Parser', icon: 'SP', description: 'Parser' },
-  { type: 'condition', label: 'Condition', icon: '?', description: 'Condition' },
-  { type: 'service_call', label: 'Service Call', icon: 'API', description: 'Service' },
-  { type: 'user_interrupt', label: 'User Interrupt', icon: 'USR', description: 'Interrupt' },
-  { type: 'llm_step', label: 'LLM Step', icon: 'LLM', description: 'LLM' },
-  { type: 'terminal_response', label: 'Terminal Response', icon: 'END', description: 'Terminal' },
+  { type: 'structured_parser', label: 'Parse', icon: 'SP', description: 'Parser' },
+  { type: 'condition', label: 'Decision', icon: '?', description: 'Condition' },
+  { type: 'service_call', label: 'Action', icon: 'API', description: 'Service' },
+  { type: 'user_interrupt', label: 'Interrupt', icon: 'USR', description: 'Interrupt' },
+  { type: 'llm_step', label: 'Think', icon: 'LLM', description: 'LLM' },
+  { type: 'terminal_response', label: 'Reply', icon: 'END', description: 'Terminal' },
 ];
 
 const baseTemplate: AgentTemplate = {
@@ -98,7 +106,7 @@ describe('AgentWorkflowCanvasComponent', () => {
       throw new Error('Expected graph mutation to emit');
     }
     expect(emitted.nodes.some((node) => node.type === 'service_call')).toBe(true);
-    expect(component.selectedNodeId()).toBe('service_call_1');
+    expect(component.selectedNodeId()).toBe('action_1');
     expect(component.componentPickerOpen()).toBe(false);
   });
 
@@ -148,6 +156,20 @@ describe('AgentWorkflowCanvasComponent', () => {
     expect(component.selectedNodeIds()).toEqual(['finish']);
   });
 
+  it('opens the node editor on double-click but not on click or selection', () => {
+    const firstNode = fixture.nativeElement.querySelector('.flow-node') as HTMLElement;
+
+    firstNode.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(component.selectedNodeId()).toBeNull();
+
+    component.onSelectionChange(new FSelectionChangeEvent(['parse'], [], []));
+    expect(component.selectedNodeIds()).toEqual(['parse']);
+    expect(component.selectedNodeId()).toBeNull();
+
+    firstNode.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(component.selectedNodeId()).toBe('parse');
+  });
+
   it('creates an edge from connector handles', () => {
     let emitted: AgentTemplateGraph | undefined;
     component.graphChange.subscribe((graph) => {
@@ -169,16 +191,90 @@ describe('AgentWorkflowCanvasComponent', () => {
     expect(emitted.edges.some((edge) => edge.source === 'parse' && edge.kind === 'on_failure')).toBe(true);
   });
 
-  it('renders a deterministic visible route for every graph edge', () => {
-    const routes = component.edgeRoutes();
+  it('renders connector circles plus quick-connect outlets for drag-to-connect', () => {
+    const allConnectors = fixture.debugElement.queryAll(By.directive(FConnectorDirective));
+    const connectorTypes = allConnectors.map((connector) => connector.injector.get(FConnectorDirective).fConnectorType());
+    const nodeElements = fixture.debugElement.queryAll(By.directive(FNodeDirective));
 
-    expect(routes).toHaveLength(component.graph.edges.length);
-    expect(routes.every((route) => route.path.startsWith('M ') && route.path.includes(' L '))).toBe(true);
-    expect(routes.every((route) => route.color.length > 0 && route.markerId.startsWith('edge-arrow-'))).toBe(true);
+    expect(connectorTypes).toContain('source');
+    expect(connectorTypes).toContain('target');
+    expect(connectorTypes).toContain('outlet');
+    expect(nodeElements.every((nodeElement) => nodeElement.injector.get(FNodeDirective).fConnectOnNode())).toBe(true);
+  });
 
-    const renderedPaths = fixture.nativeElement.querySelectorAll('.visible-edge-line') as NodeListOf<SVGPathElement>;
-    expect(renderedPaths.length).toBe(component.graph.edges.length);
-    expect(Array.from(renderedPaths).every((path) => (path.getAttribute('d') ?? '').length > 0)).toBe(true);
+  it('accepts node-id targets for quick drag-to-connect gestures', () => {
+    let emitted: AgentTemplateGraph | undefined;
+    component.graphChange.subscribe((graph) => {
+      emitted = graph;
+    });
+
+    const createEvent = new FCreateConnectionEvent(component.nextConnectorId('parse'), 'final_failure', { x: 4, y: 8 });
+    component.onCreateConnection(createEvent);
+
+    expect(emitted).toBeDefined();
+    if (!emitted) {
+      throw new Error('Expected graph mutation to emit');
+    }
+
+    const updatedEdge = emitted.edges.find((edge) => edge.source === 'parse' && edge.kind === 'next');
+    expect(updatedEdge?.target).toBe('final_failure');
+  });
+
+  it('accepts node-id sources for quick drag-to-connect gestures', () => {
+    let emitted: AgentTemplateGraph | undefined;
+    component.graphChange.subscribe((graph) => {
+      emitted = graph;
+    });
+
+    const createEvent = new FCreateConnectionEvent('parse', component.targetConnectorId('final_failure'), { x: 4, y: 8 });
+    component.onCreateConnection(createEvent);
+
+    expect(emitted).toBeDefined();
+    if (!emitted) {
+      throw new Error('Expected graph mutation to emit');
+    }
+
+    const updatedEdge = emitted.edges.find((edge) => edge.source === 'parse' && edge.kind === 'next');
+    expect(updatedEdge?.target).toBe('final_failure');
+  });
+
+  it('opens route details on edge double-click, not on edge selection', () => {
+    component.onSelectionChange(new FSelectionChangeEvent([], [], ['parse::next::final_success']));
+    expect(component.inspectedConnection()).toBeNull();
+
+    fixture.detectChanges();
+    const routeToggle = fixture.nativeElement.querySelector('.edge-chip-trigger') as HTMLElement;
+    routeToggle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(component.inspectedConnection()?.id).toBe('parse::next::final_success');
+    expect(fixture.nativeElement.querySelector('.edge-inspector')).not.toBeNull();
+  });
+
+  it('renders connections with native f-connection paths only', () => {
+    const renderedOverlayPaths = fixture.nativeElement.querySelectorAll('.visible-edge-line') as NodeListOf<SVGPathElement>;
+    expect(renderedOverlayPaths.length).toBe(0);
+
+    const nativeConnections = fixture.nativeElement.querySelectorAll('f-connection, .f-connection');
+    expect(nativeConnections.length).toBeGreaterThan(0);
+  });
+
+  it('emits node assist request from natural-language instruction', () => {
+    let emitted: { nodeId: string; instruction: string } | undefined;
+    component.nodeAssistRequested.subscribe((request) => {
+      emitted = request;
+    });
+
+    component.openNodeEditor('parse');
+    fixture.detectChanges();
+
+    component.updateNodeAssistDraft('parse', 'Route high-value requests to approval.');
+    component.requestNodeAssist('parse');
+
+    expect(emitted).toEqual({
+      nodeId: 'parse',
+      instruction: 'Route high-value requests to approval.',
+    });
   });
 
   it('reconnects and deletes edges', () => {
@@ -215,14 +311,57 @@ describe('AgentWorkflowCanvasComponent', () => {
     expect(component.graph.edges.some((edge) => edge.id === reassigned.id)).toBe(false);
   });
 
-  it('toggles assist tools visibility state', () => {
-    expect(component.assistToolsOpen()).toBe(false);
+  it('configures a service_call node for registered tool usage', () => {
+    component.graphChange.subscribe((graph) => {
+      component.graph = graph;
+    });
 
-    component.toggleAssistTools();
-    expect(component.assistToolsOpen()).toBe(true);
+    component.addNodeFromPalette(palette[2]);
+    const serviceNode = component.graph.nodes.find((node) => node.id === 'action_1');
+    if (!serviceNode || serviceNode.type !== 'service_call') {
+      throw new Error('Expected service_call node action_1');
+    }
 
-    component.toggleAssistTools();
-    expect(component.assistToolsOpen()).toBe(false);
+    component.updateServiceMode(serviceNode.id, 'tool');
+    component.updateServiceToolName(serviceNode.id, 'ledger_lookup');
+    component.updateServiceToolId(serviceNode.id, 'tool-id-123');
+    component.updateServiceToolInputTemplate(
+      serviceNode.id,
+      '{"account_id": "{{ parsed_data.account_id }}", "amount": "{{ parsed_data.amount }}"}'
+    );
+    component.updateServiceTimeout(serviceNode.id, '45');
+
+    const updated = component.graph.nodes.find((node) => node.id === 'action_1');
+    if (!updated || updated.type !== 'service_call') {
+      throw new Error('Expected updated service_call node action_1');
+    }
+
+    expect(updated.config.mode).toBe('tool');
+    expect(updated.config.url).toBeNull();
+    expect(updated.config.tool_name).toBe('ledger_lookup');
+    expect(updated.config.tool_id).toBe('tool-id-123');
+    expect(updated.config.tool_input_template).toEqual({
+      account_id: '{{ parsed_data.account_id }}',
+      amount: '{{ parsed_data.amount }}',
+    });
+    expect(updated.config.timeout_seconds).toBe(45);
+  });
+
+  it('shows a config error when service_call tool input template is invalid JSON', () => {
+    component.graphChange.subscribe((graph) => {
+      component.graph = graph;
+    });
+
+    component.addNodeFromPalette(palette[2]);
+    component.updateServiceMode('action_1', 'tool');
+    component.updateServiceToolInputTemplate('action_1', '[1, 2, 3]');
+
+    expect(component.nodeConfigError()).toContain('Tool input template must be a JSON object.');
+  });
+
+  it('keeps minimal canvas mode active with no assist-tools panels', () => {
+    expect(fixture.nativeElement.textContent).not.toContain('assist tools');
+    expect(fixture.nativeElement.querySelector('.canvas-secondary-tools')).toBeNull();
   });
 
   it('renames branch labels from the node route editor and remaps edge id', () => {
