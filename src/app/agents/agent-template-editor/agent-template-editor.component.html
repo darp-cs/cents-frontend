@@ -1,0 +1,240 @@
+<main class="agent-editor-page">
+  <header class="editor-header">
+    <div class="editor-title">
+      <h1>{{ isEditing() ? 'Edit Agent Template' : 'New Agent Template' }}</h1>
+      <div class="editor-status" aria-label="Draft status">
+        <span class="status-chip" [class.dirty]="isDirty()">{{ isDirty() ? 'Unsaved changes' : 'Saved' }}</span>
+        <span class="status-chip">Version {{ baselineVersion() ?? 'new' }}</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="secondary" (click)="cancel()">Back to Agents</button>
+      <button type="button" class="secondary" [disabled]="!canValidate()" (click)="validateTemplate()">
+        {{ validationStatus() === 'validating' ? 'Validating...' : 'Validate' }}
+      </button>
+      <button type="button" class="save" data-testid="save-agent" [disabled]="!canSave()" (click)="saveTemplate()">
+        {{ isSaving() ? 'Saving...' : 'Save' }}
+      </button>
+    </div>
+  </header>
+
+  @if (loadError()) {
+    <p class="error">{{ loadError() }}</p>
+  }
+
+  <section class="editor-workspace">
+    <div class="editor-toolbar">
+      <label class="agent-name-field" for="agent-name">
+        <span>Agent name</span>
+        <input
+          id="agent-name"
+          type="text"
+          [value]="agentName()"
+          [disabled]="isEditing() || isBootstrapping() || isSaving()"
+          placeholder="e.g. ExpenseApproval"
+          (input)="onAgentNameInput($any($event.target).value)"
+        />
+      </label>
+
+      <label class="example-field" for="example-template">
+        <span>Example sub-agents</span>
+        <div class="example-controls">
+          <select
+            id="example-template"
+            [value]="selectedExampleId()"
+            [disabled]="isBootstrapping() || isSaving()"
+            (change)="onExampleSelectionInput($any($event.target).value)"
+          >
+            @for (example of examples; track example.id) {
+              <option [value]="example.id">{{ example.name }}</option>
+            }
+          </select>
+          <button type="button" class="secondary" [disabled]="isBootstrapping() || isSaving()" (click)="applySelectedExample()">
+            Load example
+          </button>
+        </div>
+      </label>
+
+      <nav class="mode-tabs" aria-label="Editor mode">
+        <button
+          type="button"
+          [class.active]="editorMode() === 'natural-language'"
+          [attr.aria-current]="editorMode() === 'natural-language' ? 'page' : null"
+          (click)="setEditorMode('natural-language')"
+        >
+          Natural Language
+        </button>
+        <button
+          type="button"
+          [class.active]="editorMode() === 'visual-graph'"
+          [attr.aria-current]="editorMode() === 'visual-graph' ? 'page' : null"
+          (click)="setEditorMode('visual-graph')"
+        >
+          Visual Graph
+        </button>
+        <button
+          type="button"
+          [class.active]="editorMode() === 'advanced-json'"
+          [attr.aria-current]="editorMode() === 'advanced-json' ? 'page' : null"
+          (click)="setEditorMode('advanced-json')"
+        >
+          JSON Preview
+        </button>
+      </nav>
+    </div>
+
+    @if (editorMode() === 'natural-language') {
+      <section class="mode-panel natural-mode">
+        <div class="mode-heading">
+          <div>
+            <span class="section-eyebrow">Natural language</span>
+            <h2>Workflow source</h2>
+          </div>
+          <div class="mode-actions">
+            @if (generationMessage()) {
+              <span class="entry-badge">Graph updated</span>
+            }
+            <button
+              type="button"
+              [disabled]="!canGenerate() || isBootstrapping() || isSaving()"
+              (click)="generateFromDescription()"
+            >
+              {{ isGenerating() ? 'Building graph...' : 'Build graph' }}
+            </button>
+          </div>
+        </div>
+
+        <section class="workflow-source-editor" aria-label="Natural language workflow source">
+          <textarea
+            class="workflow-source"
+            rows="22"
+            aria-label="Workflow source"
+            spellcheck="true"
+            [value]="authoringPrompt()"
+            [placeholder]="workflowSourcePlaceholder"
+            [disabled]="isGenerating() || isBootstrapping() || isSaving()"
+            (input)="onAuthoringPromptInput($any($event.target).value)"
+            (keydown.control.enter)="generateFromDescription()"
+            (keydown.meta.enter)="generateFromDescription()"
+          ></textarea>
+
+          @if (generationMessage()) {
+            <p class="success" aria-live="polite">{{ generationMessage() }}</p>
+          }
+
+          @if (generationError()) {
+            <p class="error" aria-live="polite">{{ generationError() }}</p>
+          }
+        </section>
+      </section>
+    }
+
+    @if (editorMode() === 'visual-graph') {
+      <section class="mode-panel graph-mode">
+        <div class="mode-heading compact-heading">
+          <div>
+            <span class="section-eyebrow">Visual graph</span>
+            <h2>Workflow canvas</h2>
+          </div>
+        </div>
+        <app-agent-workflow-canvas
+          [graph]="graph()"
+          [layout]="graphLayout()"
+          [palette]="paletteItems()"
+          [availableTools]="availableTools()"
+          [toolsLoading]="toolsLoading()"
+          [toolsError]="toolsError()"
+          [paletteLoading]="paletteLoading()"
+          [paletteError]="paletteError()"
+          [disabled]="isBootstrapping() || isSaving()"
+          [assistingNodeId]="assistingNodeId()"
+          [nodeAssistError]="nodeAssistError()"
+          (graphChange)="onGraphChanged($event)"
+          (layoutChange)="onGraphLayoutChanged($event)"
+          (nodeAssistRequested)="onNodeAssistRequested($event)"
+        ></app-agent-workflow-canvas>
+
+        <section class="workflow-equivalent" aria-label="Natural language equivalent">
+          <div class="mode-heading compact-heading">
+            <div>
+              <span class="section-eyebrow">Equivalent source</span>
+              <h2>Natural language mirror</h2>
+            </div>
+          </div>
+          <textarea class="code-editor" [value]="graphEquivalentSource()" readonly spellcheck="false"></textarea>
+        </section>
+      </section>
+    }
+
+    @if (editorMode() === 'advanced-json') {
+      <section class="mode-panel json-mode">
+        <div class="mode-heading">
+          <div>
+            <span class="section-eyebrow">Advanced</span>
+            <h2>Canonical JSON</h2>
+          </div>
+          <button type="button" class="secondary" (click)="copyJsonPreview()">Copy JSON</button>
+        </div>
+
+        <div class="json-workspace">
+          <section class="json-pane">
+            <h3>Current draft</h3>
+            <textarea class="code-editor" [value]="draftJsonPreview()" readonly spellcheck="false"></textarea>
+          </section>
+
+          @if (isEditing() && baselineJson()) {
+            <section class="json-pane">
+              <h3>Latest saved version</h3>
+              <textarea class="code-editor" [value]="baselineJson()" readonly spellcheck="false"></textarea>
+            </section>
+          }
+        </div>
+
+        @if (exportMessage()) {
+          <p class="success">{{ exportMessage() }}</p>
+        }
+      </section>
+    }
+
+    @if (validationStatus() === 'valid') {
+      <p class="success">Template is valid and ready to save.</p>
+    }
+
+    @if (validateError()) {
+      <p class="error">{{ validateError() }}</p>
+    }
+
+    @if (saveError()) {
+      <p class="error">{{ saveError() }}</p>
+    }
+
+    @if (validationNodeEntries().length > 0) {
+      <section class="validation-block">
+        <h3>Node Validation Errors</h3>
+        <ul>
+          @for (entry of validationNodeEntries(); track entry.nodeId) {
+            <li>
+              <strong>{{ entry.nodeId }}</strong>
+              <ul>
+                @for (message of entry.errors; track message) {
+                  <li>{{ message }}</li>
+                }
+              </ul>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    @if (generalValidationErrors().length > 0) {
+      <section class="validation-block">
+        <h3>General Validation Errors</h3>
+        <ul>
+          @for (message of generalValidationErrors(); track message) {
+            <li>{{ message }}</li>
+          }
+        </ul>
+      </section>
+    }
+  </section>
+</main>

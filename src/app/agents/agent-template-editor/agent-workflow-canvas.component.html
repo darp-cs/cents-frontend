@@ -1,0 +1,574 @@
+<section class="workflow-shell" [class.inspector-open]="selectedNode() !== null || inspectedConnection() !== null" aria-label="Workflow graph editor">
+  <section class="canvas-panel">
+    <div class="canvas-toolbar">
+      <div class="toolbar-group">
+        <button type="button" class="secondary" [disabled]="disabled" (click)="fitToView()">Fit to view</button>
+        <button type="button" class="secondary" [disabled]="disabled" (click)="clearSelection()">Clear selection</button>
+      </div>
+      <div class="toolbar-group toolbar-group-end">
+        <button type="button" class="secondary danger-subtle" [disabled]="disabled" (click)="deleteSelection()">Delete selected</button>
+      </div>
+    </div>
+    <p class="panel-help">
+      Drag Connect from a node to another node to create a route quickly. Use the small circles for explicit next, failure, and
+      branch routing. Double-click a component or route to edit details.
+    </p>
+
+    @if (graph.nodes.length === 0) {
+      <div class="empty-state">Add components from the palette to start your workflow graph.</div>
+    }
+
+    <div class="canvas-stage">
+      <button
+        type="button"
+        class="canvas-add"
+        [disabled]="disabled"
+        [attr.aria-expanded]="componentPickerOpen()"
+        aria-label="Add workflow component"
+        title="Add workflow component"
+        (click)="toggleComponentPicker()"
+      >
+        +
+      </button>
+
+      @if (componentPickerOpen()) {
+        <section class="component-picker" aria-label="Add a workflow component">
+          <div class="picker-heading">
+            <strong>Add component</strong>
+            <button type="button" class="picker-close" aria-label="Close component picker" (click)="toggleComponentPicker()">Close</button>
+          </div>
+
+          @if (paletteLoading) {
+            <p class="panel-note">Loading components...</p>
+          } @else if (paletteError) {
+            <p class="panel-error">{{ paletteError }}</p>
+          } @else {
+            <div class="picker-grid">
+              @for (item of palette; track item.type) {
+                <button
+                  type="button"
+                  class="picker-item"
+                  [disabled]="disabled"
+                  [attr.aria-label]="'Add ' + item.label + ': ' + item.description"
+                  (click)="addNodeFromPalette(item)"
+                >
+                  <span class="palette-icon" aria-hidden="true">{{ item.icon }}</span>
+                  <span>{{ item.label }}</span>
+                  <span class="picker-hint" role="tooltip">{{ item.description }}</span>
+                </button>
+              }
+            </div>
+          }
+        </section>
+      }
+
+      <f-flow
+        fDraggable
+        [fDraggableDisabled]="disabled"
+        (fCreateConnection)="onCreateConnection($event)"
+        (fReassignConnection)="onReassignConnection($event)"
+        (fSelectionChange)="onSelectionChange($event)"
+        (fDeleteSelected)="onDeleteSelected($event)"
+        (fMoveNodes)="onMoveNodes($event)"
+      >
+        <f-selection-area></f-selection-area>
+        <f-canvas
+          #canvas
+          fZoom
+          [position]="{ x: layout.viewport.x, y: layout.viewport.y }"
+          [scale]="layout.viewport.zoom"
+          (fCanvasChange)="onCanvasChange($event)"
+        >
+          <f-connection-for-create fType="segment" [fRadius]="12" [fOffset]="24"></f-connection-for-create>
+
+          <ng-container ngProjectAs="[fConnections]">
+            @for (connection of connectionViews(); track connection.id) {
+              <f-connection
+                fType="segment"
+                fSourceSide="right"
+                fTargetSide="left"
+                [fRadius]="12"
+                [fOffset]="24"
+                [fConnectionId]="connection.id"
+                [fSourceId]="connection.sourceConnectorId"
+                [fTargetId]="connection.targetConnectorId"
+                [class.edge-next]="connection.kind === 'next'"
+                [class.edge-failure]="connection.kind === 'on_failure'"
+                [class.edge-branch]="connection.kind === 'branch'"
+                [style.--ff-connection-color]="connection.color"
+                [style.--ff-marker-color]="connection.color"
+                [style.--ff-connection-width]="'3px'"
+                (dblclick)="openConnectionEditor(connection.id)"
+              >
+                <span fConnectionContent [position]="0.5" class="edge-chip-shell" [attr.aria-label]="'Edge ' + connection.label">
+                  <button
+                    type="button"
+                    fDragBlocker
+                    class="edge-chip-trigger"
+                    [class.edge-chip-open]="inspectedConnectionId() === connection.id"
+                    [attr.aria-label]="'Open route details from ' + connection.sourceNodeId + ' to ' + connection.targetNodeId"
+                    (dblclick)="openConnectionEditor(connection.id)"
+                  >
+                    <span class="edge-chip-dot" [style.background]="connection.color"></span>
+                    @if (inspectedConnectionId() === connection.id) {
+                      <span
+                        class="edge-chip"
+                        [class.edge-chip-next]="connection.kind === 'next'"
+                        [class.edge-chip-failure]="connection.kind === 'on_failure'"
+                        [class.edge-chip-branch]="connection.kind === 'branch'"
+                        [class.edge-chip-selected]="connection.isSelected"
+                      >
+                        <span class="edge-route-copy">
+                          <strong>{{ connection.displayLabel }}</strong>
+                          <span>{{ connection.targetNodeId }}</span>
+                        </span>
+                      </span>
+                    }
+                  </button>
+                </span>
+              </f-connection>
+            }
+          </ng-container>
+
+          <ng-container ngProjectAs="[fNodes]">
+            @for (node of nodeViews(); track node.id) {
+              <article
+                fNode
+                fDragHandle
+                class="flow-node"
+                [fNodeId]="node.id"
+                [fNodePosition]="node.position"
+                [fConnectOnNode]="true"
+                [class.entry]="node.isEntry"
+                [class.editing]="selectedNodeId() === node.id"
+                [attr.aria-label]="'Workflow node ' + node.id + ' (' + node.label + ')'"
+                tabindex="0"
+                (dblclick)="openNodeEditor(node.id)"
+                (keydown.enter)="openNodeEditor(node.id)"
+                (keydown.space)="$event.preventDefault(); openNodeEditor(node.id)"
+              >
+                <div class="flow-node-header">
+                  <span class="flow-node-icon" aria-hidden="true">{{ node.icon }}</span>
+                  <div>
+                    <strong>{{ node.label }}</strong>
+                    <small>{{ node.id }}</small>
+                  </div>
+                </div>
+
+                <div class="connectors" aria-label="Connection handles">
+                  <div class="connector-target-lane">
+                    <div
+                      fConnector
+                      fConnectorType="target"
+                      class="connector connector-in"
+                      [fConnectorId]="targetConnectorId(node.id)"
+                      [attr.aria-label]="'Target connector for ' + node.id"
+                      [attr.title]="'Input for ' + node.id"
+                    ></div>
+                  </div>
+
+                  <div class="connector-output-lane">
+                    @if (node.supportsNext || node.type === 'condition') {
+                      <div
+                        fConnector
+                        fConnectorType="outlet"
+                        [fConnectionFromOutlet]="true"
+                        class="connector connector-outlet"
+                        [fConnectorId]="outletConnectorId(node.id)"
+                        [attr.aria-label]="'Quick connect outlet for ' + node.id"
+                        [attr.title]="'Drag to connect from ' + node.id"
+                      >
+                        Connect
+                      </div>
+                    }
+
+                    @if (node.supportsNext) {
+                      <div
+                        fConnector
+                        fConnectorType="source"
+                        class="connector connector-next"
+                        [fConnectorId]="nextConnectorId(node.id)"
+                        [attr.aria-label]="'next connector for ' + node.id"
+                        [attr.title]="'Next route from ' + node.id"
+                      ></div>
+                    }
+
+                    @if (node.supportsFailure) {
+                      <div
+                        fConnector
+                        fConnectorType="source"
+                        class="connector connector-failure"
+                        [fConnectorId]="failureConnectorId(node.id)"
+                        [attr.aria-label]="'on_failure connector for ' + node.id"
+                        [attr.title]="'Failure route from ' + node.id"
+                      ></div>
+                    }
+
+                    @if (node.type === 'condition') {
+                      <div class="condition-branches">
+                        @for (branch of conditionBranchOutputs(node.id); track branch.connectorId) {
+                          <div
+                            fConnector
+                            fConnectorType="source"
+                            class="connector connector-branch"
+                            [fConnectorId]="branch.connectorId"
+                            [attr.aria-label]="'branch ' + branch.label + ' connector for ' + node.id"
+                            [attr.title]="'Branch ' + branch.label + ' from ' + node.id"
+                          ></div>
+                        }
+                        <button
+                          type="button"
+                          class="secondary branch-add"
+                          fDragBlocker
+                          [disabled]="disabled"
+                          title="Add a branch route"
+                          (click)="addBranchForNode(node.id)"
+                        >
+                          +
+                        </button>
+                      </div>
+                    }
+                  </div>
+                </div>
+              </article>
+            }
+          </ng-container>
+        </f-canvas>
+      </f-flow>
+    </div>
+
+    @if (connectionError()) {
+      <p class="panel-error">{{ connectionError() }}</p>
+    }
+  </section>
+
+  @if (selectedNode(); as node) {
+    <aside class="node-inspector" aria-label="Edit selected workflow node">
+      <header class="inspector-header">
+        <div>
+          <h3>{{ node.id }}</h3>
+          <span class="node-type-label">{{ nodeTypeLabel(node.type) }}</span>
+        </div>
+        <button type="button" class="inspector-close" aria-label="Close node editor" (click)="closeNodeEditor()">Close</button>
+      </header>
+
+      <label>
+        Step note
+        <textarea
+          rows="2"
+          [disabled]="disabled"
+          [value]="node.description ?? ''"
+          (input)="updateNodeDescription(node.id, $any($event.target).value)"
+        ></textarea>
+      </label>
+
+      <section class="node-assist" aria-label="Natural language assistant">
+        <label>
+          Describe this step in natural language
+          <textarea
+            rows="3"
+            [disabled]="disabled || assistingNodeId !== null"
+            [value]="nodeAssistDraft(node.id)"
+            (input)="updateNodeAssistDraft(node.id, $any($event.target).value)"
+          ></textarea>
+        </label>
+        <button
+          type="button"
+          class="secondary"
+          [disabled]="disabled || assistingNodeId !== null"
+          (click)="requestNodeAssist(node.id)"
+        >
+          {{ assistingNodeId === node.id ? 'Applying AI draft...' : 'Apply AI draft' }}
+        </button>
+        @if (nodeAssistLocalError()) {
+          <p class="panel-error">{{ nodeAssistLocalError() }}</p>
+        }
+        @if (nodeAssistError) {
+          <p class="panel-error">{{ nodeAssistError }}</p>
+        }
+      </section>
+
+      @switch (node.type) {
+        @case ('structured_parser') {
+          <label>
+            Parsing approach
+            <select [disabled]="disabled" [value]="node.config.strategy" (change)="updateParserStrategy(node.id, $any($event.target).value)">
+              <option value="regex">Pattern matching</option>
+              <option value="llm">Language model</option>
+            </select>
+          </label>
+          @if (node.config.strategy === 'llm') {
+            <label>
+              Extraction instructions
+              <textarea
+                rows="5"
+                [disabled]="disabled"
+                [value]="node.config.llm_prompt_instructions ?? ''"
+                (input)="updateNodeEditableText(node.id, $any($event.target).value)"
+              ></textarea>
+            </label>
+          }
+        }
+        @case ('condition') {
+          <label>
+            If this is true
+            <textarea
+              rows="4"
+              spellcheck="false"
+              [disabled]="disabled"
+              [value]="node.config.expression"
+              (input)="updateNodeEditableText(node.id, $any($event.target).value)"
+            ></textarea>
+          </label>
+        }
+        @case ('service_call') {
+          <label>
+            Action mode
+            <select [disabled]="disabled" [value]="node.config.mode" (change)="updateServiceMode(node.id, $any($event.target).value)">
+              @for (mode of serviceModeOptions(); track mode) {
+                <option [value]="mode">{{ mode === 'http' ? 'HTTP service' : 'Registered tool' }}</option>
+              }
+            </select>
+          </label>
+
+          @if (node.config.mode === 'http') {
+            <label>
+              HTTP method
+              <select [disabled]="disabled" [value]="node.config.method" (change)="updateServiceMethod(node.id, $any($event.target).value)">
+                @for (method of serviceMethodOptions(); track method) {
+                  <option [value]="method">{{ method }}</option>
+                }
+              </select>
+            </label>
+
+            <label>
+              Service URL
+              <input
+                type="url"
+                [disabled]="disabled"
+                [value]="node.config.url ?? ''"
+                (input)="updateServiceUrl(node.id, $any($event.target).value)"
+              />
+            </label>
+
+            <label>
+              Headers template (JSON object)
+              <textarea
+                rows="4"
+                spellcheck="false"
+                [disabled]="disabled"
+                [value]="serviceHeadersTemplateText(node.id)"
+                (change)="updateServiceHeadersTemplate(node.id, $any($event.target).value)"
+              ></textarea>
+            </label>
+
+            <label>
+              Body template (JSON object or null)
+              <textarea
+                rows="5"
+                spellcheck="false"
+                [disabled]="disabled"
+                [value]="serviceBodyTemplateText(node.id)"
+                (change)="updateServiceBodyTemplate(node.id, $any($event.target).value)"
+              ></textarea>
+            </label>
+
+            <label class="service-toggle">
+              <input
+                type="checkbox"
+                [disabled]="disabled"
+                [checked]="node.config.allow_unsafe_destination ?? false"
+                (change)="updateServiceAllowUnsafe(node.id, $any($event.target).checked)"
+              />
+              Allow unsafe destination (server must also allow this)
+            </label>
+          } @else {
+            @if (toolsLoading) {
+              <p class="panel-note">Loading enabled tools...</p>
+            }
+
+            @if (toolsError) {
+              <p class="panel-error">{{ toolsError }}</p>
+            }
+
+            <label>
+              Registered tool
+              <select
+                [disabled]="disabled || toolsLoading"
+                [value]="node.config.tool_name ?? ''"
+                (change)="updateServiceToolName(node.id, $any($event.target).value)"
+              >
+                <option value="">Select an enabled tool</option>
+                @for (tool of toolOptionsForNode(node.id); track tool.id) {
+                  <option [value]="tool.name">{{ tool.name }}</option>
+                }
+              </select>
+            </label>
+
+            @if (!toolsLoading && !toolsError && toolOptionsForNode(node.id).length === 0) {
+              <p class="panel-note">No enabled tools are available yet. Create one in Tools first.</p>
+            }
+
+            <label>
+              Tool id (optional)
+              <input
+                type="text"
+                [disabled]="disabled"
+                [value]="node.config.tool_id ?? ''"
+                placeholder="UUID override"
+                (input)="updateServiceToolId(node.id, $any($event.target).value)"
+              />
+            </label>
+
+            <label>
+              Tool input template (JSON object)
+              <textarea
+                rows="5"
+                spellcheck="false"
+                [disabled]="disabled"
+                [value]="serviceToolInputTemplateText(node.id)"
+                (change)="updateServiceToolInputTemplate(node.id, $any($event.target).value)"
+              ></textarea>
+            </label>
+          }
+
+          <label>
+            Timeout seconds
+            <input
+              type="number"
+              min="1"
+              [disabled]="disabled"
+              [value]="node.config.timeout_seconds ?? ''"
+              (change)="updateServiceTimeout(node.id, $any($event.target).value)"
+            />
+          </label>
+
+          @if (nodeConfigError()) {
+            <p class="panel-error">{{ nodeConfigError() }}</p>
+          }
+
+        }
+        @case ('user_interrupt') {
+          <label>
+            Ask the user
+            <textarea
+              rows="5"
+              [disabled]="disabled"
+              [value]="node.config.prompt"
+              (input)="updateNodeEditableText(node.id, $any($event.target).value)"
+            ></textarea>
+          </label>
+        }
+        @case ('llm_step') {
+          <label>
+            Model instructions
+            <textarea
+              rows="7"
+              [disabled]="disabled"
+              [value]="node.config.system_prompt"
+              (input)="updateNodeEditableText(node.id, $any($event.target).value)"
+            ></textarea>
+          </label>
+        }
+        @case ('terminal_response') {
+          <label>
+            Reply with
+            <textarea
+              rows="5"
+              [disabled]="disabled"
+              [value]="node.config.template"
+              (input)="updateNodeEditableText(node.id, $any($event.target).value)"
+            ></textarea>
+          </label>
+        }
+      }
+
+      <section class="route-editor" aria-label="Outgoing routes">
+        <h4>Routes from this component</h4>
+        @if (outgoingConnections(node.id).length === 0) {
+          <p class="panel-note">This component ends the workflow.</p>
+        }
+        @for (connection of outgoingConnections(node.id); track connection.id) {
+          <div class="route-editor-row">
+            @if (connection.kind === 'branch') {
+              <label>
+                Condition name
+                <input
+                  type="text"
+                  [disabled]="disabled"
+                  [value]="connection.branchLabel ?? ''"
+                  (change)="updateBranchLabel(connection.id, $any($event.target).value)"
+                />
+              </label>
+            } @else {
+              <span class="route-kind" [style.color]="connection.color">{{ connection.displayLabel }}</span>
+            }
+
+            <label>
+              Go to
+              <select
+                [disabled]="disabled"
+                [value]="connection.targetNodeId"
+                (change)="updateConnectionTarget(connection.id, $any($event.target).value)"
+              >
+                @for (target of targetNodeOptions(); track target.id) {
+                  <option [value]="target.id">{{ target.label }}</option>
+                }
+              </select>
+            </label>
+            <button type="button" class="route-remove" [disabled]="disabled" (click)="deleteEdgeById(connection.id)">Remove route</button>
+          </div>
+        }
+      </section>
+
+      @if (connectionError()) {
+        <p class="panel-error">{{ connectionError() }}</p>
+      }
+
+      <footer class="inspector-actions">
+        <button type="button" class="secondary" [disabled]="disabled || graph.entryNodeId === node.id" (click)="setEntryNode(node.id)">
+          {{ graph.entryNodeId === node.id ? 'Entry component' : 'Make entry' }}
+        </button>
+        <button type="button" class="secondary" [disabled]="disabled" (click)="duplicateNode(node.id)">Duplicate</button>
+        <button type="button" class="danger" [disabled]="disabled" (click)="deleteNode(node.id)">Delete</button>
+      </footer>
+    </aside>
+  } @else if (inspectedConnection(); as connection) {
+    <aside class="node-inspector edge-inspector" aria-label="Edit selected workflow route">
+      <header class="inspector-header">
+        <div>
+          <h3>{{ connection.displayLabel }}</h3>
+          <span class="node-type-label">{{ connection.sourceNodeId }} -> {{ connection.targetNodeId }}</span>
+        </div>
+        <button type="button" class="inspector-close" aria-label="Close route editor" (click)="closeConnectionEditor()">Close</button>
+      </header>
+
+      @if (connection.kind === 'branch') {
+        <label>
+          Condition name
+          <input
+            type="text"
+            [disabled]="disabled"
+            [value]="connection.branchLabel ?? ''"
+            (change)="updateBranchLabel(connection.id, $any($event.target).value)"
+          />
+        </label>
+      }
+
+      <label>
+        Go to
+        <select
+          [disabled]="disabled"
+          [value]="connection.targetNodeId"
+          (change)="updateConnectionTarget(connection.id, $any($event.target).value)"
+        >
+          @for (target of targetNodeOptions(); track target.id) {
+            <option [value]="target.id">{{ target.label }}</option>
+          }
+        </select>
+      </label>
+
+      <button type="button" class="route-remove" [disabled]="disabled" (click)="deleteEdgeById(connection.id)">Remove route</button>
+    </aside>
+  }
+</section>

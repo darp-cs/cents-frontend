@@ -2,8 +2,14 @@
   <h1>Register</h1>
 
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
-    <label for="name">Name</label>
-    <input id="name" type="text" formControlName="name" />
+    <label for="username">Username</label>
+    <input id="username" type="text" formControlName="username" />
+
+    <label for="first_name">First name</label>
+    <input id="first_name" type="text" formControlName="first_name" />
+
+    <label for="last_name">Last name</label>
+    <input id="last_name" type="text" formControlName="last_name" />
 
     <label for="email">Email</label>
     <input id="email" type="email" formControlName="email" />

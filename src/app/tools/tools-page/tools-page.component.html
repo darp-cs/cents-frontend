@@ -1,0 +1,211 @@
+<main class="tools-page">
+  <header>
+    <div>
+      <h1>Tools</h1>
+      <p>Manage the tools your assistant can call during a conversation.</p>
+    </div>
+    <div class="filters" role="group" aria-label="Tool filters">
+      <button
+        type="button"
+        class="secondary"
+        data-testid="filter-all"
+        [class.filter-active]="filter() === 'all'"
+        (click)="setFilter('all')"
+      >
+        All
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        data-testid="filter-enabled"
+        [class.filter-active]="filter() === 'enabled'"
+        (click)="setFilter('enabled')"
+      >
+        Enabled
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        data-testid="filter-disabled"
+        [class.filter-active]="filter() === 'disabled'"
+        (click)="setFilter('disabled')"
+      >
+        Disabled
+      </button>
+    </div>
+  </header>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <section class="tools-layout">
+    <form class="editor" (ngSubmit)="saveTool()">
+      <h2>{{ editingToolId() ? 'Edit tool' : 'Register tool' }}</h2>
+
+      <label for="tool-name">Name</label>
+      <input
+        id="tool-name"
+        name="toolName"
+        [ngModel]="draftName()"
+        (ngModelChange)="draftName.set($event)"
+        maxlength="255"
+        required
+      />
+
+      <label for="tool-description">Description</label>
+      <textarea
+        id="tool-description"
+        name="toolDescription"
+        rows="5"
+        [ngModel]="draftDescription()"
+        (ngModelChange)="draftDescription.set($event)"
+        maxlength="20000"
+        required
+      ></textarea>
+
+      <label class="toggle-row" for="tool-enabled">
+        <input
+          id="tool-enabled"
+          name="toolEnabled"
+          type="checkbox"
+          [ngModel]="draftEnabled()"
+          (ngModelChange)="draftEnabled.set($event)"
+        />
+        Enabled
+      </label>
+
+      <label for="tool-python-entrypoint">Python entrypoint</label>
+      <input
+        id="tool-python-entrypoint"
+        name="toolPythonEntrypoint"
+        [ngModel]="draftPythonEntrypoint()"
+        (ngModelChange)="draftPythonEntrypoint.set($event)"
+        maxlength="128"
+      />
+
+      <label for="tool-python-code">Python code</label>
+      <textarea
+        id="tool-python-code"
+        name="toolPythonCode"
+        rows="10"
+        [ngModel]="draftPythonCode()"
+        (ngModelChange)="draftPythonCode.set($event)"
+        maxlength="120000"
+      ></textarea>
+
+      <label for="tool-sample-input">Sample input JSON</label>
+      <textarea
+        id="tool-sample-input"
+        name="toolSampleInput"
+        rows="6"
+        [ngModel]="sampleInputJson()"
+        (ngModelChange)="sampleInputJson.set($event)"
+      ></textarea>
+
+      <label for="tool-sample-context">Sample context JSON</label>
+      <textarea
+        id="tool-sample-context"
+        name="toolSampleContext"
+        rows="6"
+        [ngModel]="sampleContextJson()"
+        (ngModelChange)="sampleContextJson.set($event)"
+      ></textarea>
+
+      <div class="test-actions">
+        <button type="button" class="secondary" [disabled]="isTesting()" (click)="testRunCode()">
+          {{ isTesting() ? 'Testing...' : 'Test run code' }}
+        </button>
+      </div>
+
+      @if (testRunError()) {
+        <p class="error">{{ testRunError() }}</p>
+      }
+
+      @if (testRunOutput()) {
+        <section class="test-output" aria-live="polite">
+          <h3>Test run output</h3>
+          <p>
+            Status:
+            <strong>{{ testRunOutput()?.success ? 'Success' : 'Failed' }}</strong>
+          </p>
+          @if (testRunOutput()?.error) {
+            <p class="error">{{ testRunOutput()?.error }}</p>
+          }
+          @if (testRunOutput()?.traceback) {
+            <pre>{{ testRunOutput()?.traceback }}</pre>
+          }
+          @if (testRunOutput()?.output !== null) {
+            <pre>{{ formatOutput(testRunOutput()?.output) }}</pre>
+          }
+        </section>
+      }
+
+      <div class="editor-actions">
+        <button type="submit" [disabled]="isMutating()">{{ editingToolId() ? 'Save changes' : 'Create tool' }}</button>
+        @if (editingToolId()) {
+          <button type="button" class="secondary" (click)="cancelEdit()">Cancel</button>
+        }
+      </div>
+    </form>
+
+    <section class="tool-list">
+      <h2>Registered tools</h2>
+
+      @if (isLoading()) {
+        <p>Loading tools...</p>
+      }
+
+      @if (!isLoading() && tools().length === 0) {
+        <p>No tools found for this filter.</p>
+      }
+
+      @if (tools().length > 0) {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Description</th>
+                <th scope="col">State</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (tool of tools(); track tool.id) {
+                <tr>
+                  <td class="tool-name">{{ tool.name }}</td>
+                  <td class="tool-description">{{ tool.description }}</td>
+                  <td>
+                    <span class="badge" [class.badge-ok]="tool.enabled" [class.badge-neutral]="!tool.enabled">
+                      {{ tool.enabled ? 'Enabled' : 'Disabled' }}
+                    </span>
+                    @if (tool.has_python_code) {
+                      <span class="badge badge-code">Code</span>
+                    }
+                  </td>
+                  <td class="actions">
+                    <button type="button" class="secondary edit-tool" [disabled]="isMutating()" (click)="startEdit(tool)">
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      class="secondary toggle-enabled"
+                      [disabled]="isMutating()"
+                      (click)="toggleEnabled(tool)"
+                    >
+                      {{ tool.enabled ? 'Disable' : 'Enable' }}
+                    </button>
+                    <button type="button" class="danger delete-tool" [disabled]="isMutating()" (click)="deleteTool(tool)">
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  </section>
+</main>

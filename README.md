@@ -9,6 +9,10 @@ It handles authentication, conversation management, real-time streamed chat resp
 - Lets users create, rename, delete, and switch conversations.
 - Sends chat messages and renders server-streamed responses using SSE over fetch.
 - Uploads and lists documents tied to the user/workspace context.
+- Manages tool definitions (create, edit, enable/disable, delete) used by backend retrieval.
+- Lists agent templates with validity and enabled status, supports version history review, and lets admins enable/disable or delete templates.
+- Provides natural-language, visual-graph, and read-only JSON views for creating, validating, and versioning sub-agents.
+- Lets authors configure Action nodes as HTTP calls or registered tool calls directly in the visual graph editor.
 - Protects chat and document routes behind authentication.
 
 ## Architecture At A Glance
@@ -75,6 +79,23 @@ flowchart LR
 3. Upload progress updates live from HttpClient progress events.
 4. Success prepends uploaded document to list; errors render in UI.
 
+### 5) Sub-Agent Authoring Flow
+
+The editor keeps one canonical `AgentTemplate` draft across all three authoring views:
+
+1. **Natural Language** accepts a complete, multiline workflow source document. `Build graph` sends the source to `POST /agents/authoring/generate` without the starter template, so recompilation reflects the document rather than accumulating unrelated starter nodes.
+2. The backend asks the LLM for a complete template, validates it against the schema and graph rules, and returns structured errors when it cannot be applied.
+3. A valid result replaces the canonical draft. Angular computed state immediately projects that template into the Visual Graph and Advanced JSON views.
+4. **Visual Graph** edits the same draft. Drag a node's **Connect** outlet and release anywhere over another node; Foblex resolves the destination node's target connector and emits `FCreateConnectionEvent`.
+5. Source connectors retain transition meaning: `next`, `on_failure`, and named condition branches. The application owns edge replacement rules and persists only semantic graph data, not viewport layout.
+6. Action (`service_call`) nodes can be configured in-editor as either `HTTP service` mode (`method`, `url`, headers/body templates) or `Registered tool` mode (`tool_name`/`tool_id`, `tool_input_template`, timeout).
+7. A single click selects a node for movement or deletion. Double-click, Enter, or Space opens its editor. Connections render as labeled lines without directional markers.
+8. **Advanced JSON Preview** exposes the canonical payload that validation and save operations use.
+
+The graph uses the installed `@foblex/flow` unified connector API. The visible Connect control is an `outlet`, connection creation uses the native drag flow and preview, and `fConnectOnNode` enables node-body drop targets. This follows the library's current [connector](https://flow.foblex.com/docs/f-connector-directive) and [connection preview](https://flow.foblex.com/docs/f-connection-for-create-component) contracts instead of implementing custom pointer geometry.
+
+Natural-language source, visual graph, and JSON preview are synchronized from one canonical `AgentTemplate` draft while editing. Saved versions persist the validated `AgentTemplate`, not the original prose text.
+
 ## Tech Stack
 
 - Angular 22 (standalone components, no NgModules)
@@ -90,6 +111,7 @@ flowchart LR
 - src/app/chat
 - src/app/conversations
 - src/app/documents
+- src/app/agents
 - src/app/core
 - src/app/app.routes.ts
 - src/app/app.config.ts
@@ -106,6 +128,8 @@ flowchart LR
 - Conversation CRUD and active selection: src/app/conversations/conversation.service.ts
 - Chat streaming and lifecycle: src/app/chat/chat.service.ts
 - Document list and upload progress: src/app/documents/document.service.ts
+- Agent template list and management: src/app/agents/agent.service.ts, src/app/agents/agents-page/*
+- Agent template authoring, graph interaction, and validation: src/app/agents/agent-template-editor/*
 
 ## Routes
 
@@ -113,6 +137,19 @@ flowchart LR
 - /register
 - /chat (guarded)
 - /documents (guarded)
+- /tools (guarded)
+- /agents (guarded)
+- /agents/new (guarded, template editor create mode)
+- /agents/:name/edit (guarded, template editor versioned edit mode)
+
+## Runtime orchestration behavior (user-visible)
+
+When a user sends a chat message, the backend may answer through one of two paths:
+
+1. Select and execute an enabled sub-agent when the query aligns with an agent description.
+2. Use the default top-level flow (tools/docs/direct retrieval + generation) when no sub-agent is a reliable match.
+
+The selection process is hybrid: direct name match first, semantic description ranking next, lexical fallback last. This means authoring clear sub-agent descriptions directly improves routing accuracy users see in chat.
 
 ## Local Setup
 

@@ -1,0 +1,370 @@
+.agent-editor-page {
+  width: 100%;
+  min-height: 100dvh;
+  padding: 0.75rem clamp(0.75rem, 1.5vw, 1.5rem) 1.25rem;
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.35rem 0 0.75rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.editor-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.editor-header h1 {
+  font-size: 1.2rem;
+  line-height: 1.25;
+}
+
+.editor-status,
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.header-actions button {
+  min-height: 2.25rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 7px;
+}
+
+.editor-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.65rem;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: end;
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+  min-width: 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.agent-name-field {
+  flex: 0 1 18rem;
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.55rem;
+}
+
+.example-field {
+  flex: 0 1 24rem;
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.55rem;
+}
+
+.agent-name-field span {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.example-field span {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.agent-name-field input {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 7px;
+}
+
+.example-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+}
+
+.example-controls select {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 7px;
+}
+
+.example-controls button {
+  min-height: 2.35rem;
+  padding: 0.42rem 0.65rem;
+  border-radius: 7px;
+}
+
+.mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: stretch;
+  align-items: end;
+  gap: 0.2rem;
+}
+
+.mode-tabs button {
+  min-height: 2.6rem;
+  padding: 0.45rem 0.75rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.mode-tabs button:hover:not(:disabled) {
+  transform: none;
+  background: var(--surface-2);
+  color: var(--text-strong);
+  box-shadow: none;
+}
+
+.mode-tabs button.active {
+  border-bottom-color: var(--brand);
+  background: transparent;
+  color: var(--brand-strong);
+}
+
+.mode-panel {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+}
+
+.mode-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+}
+
+.section-eyebrow {
+  color: #557091;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mode-heading h2 {
+  margin-top: 0.05rem;
+  font-size: 1rem;
+}
+
+.mode-heading.compact-heading {
+  min-height: 2rem;
+}
+
+.mode-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mode-actions button,
+.mode-heading > button {
+  min-height: 2.25rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 7px;
+}
+
+.entry-badge {
+  border: 1px solid #b7d1f2;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  background: #edf5ff;
+  color: #234f83;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.workflow-source-editor {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.workflow-source {
+  width: 100%;
+  min-height: max(30rem, calc(100dvh - 15rem));
+  padding: 1rem clamp(1rem, 2vw, 1.5rem);
+  border-color: #b8c8de;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #18283d;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.code-editor {
+  width: 100%;
+  min-height: max(28rem, calc(100dvh - 18rem));
+  padding: 0.85rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: #fbfcff;
+  color: #17233d;
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.json-workspace {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(28rem, 100%), 1fr));
+  gap: 0.75rem;
+}
+
+.json-pane {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.json-pane h3 {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.workflow-equivalent {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.workflow-equivalent .code-editor {
+  min-height: 14rem;
+}
+
+button.secondary {
+  border-color: var(--border-soft);
+  background: var(--surface-1);
+  color: var(--text-strong);
+  box-shadow: none;
+}
+
+button.save {
+  background: linear-gradient(145deg, #1b75dd, #3f96ff);
+}
+
+.validation-block {
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface-1);
+}
+
+.validation-block h3 {
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.validation-block ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.error {
+  color: #c6185b;
+}
+
+.success {
+  color: #0f7a43;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #c8d9fa;
+  background: #f4f8ff;
+  color: #2a4b80;
+  border-radius: 5px;
+  padding: 0.16rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.status-chip.dirty {
+  border-color: #e7be42;
+  background: #fff7df;
+  color: #7e5b05;
+}
+
+@media (max-width: 960px) {
+  .editor-header {
+    align-items: flex-start;
+  }
+
+  .editor-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-editor-page {
+    padding-inline: 0.6rem;
+  }
+
+  .editor-header,
+  .editor-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions,
+  .agent-name-field,
+  .example-field,
+  .mode-tabs {
+    width: 100%;
+  }
+
+  .header-actions button {
+    flex: 1 1 auto;
+  }
+
+  .agent-name-field {
+    flex-basis: auto;
+  }
+
+  .example-field {
+    flex-basis: auto;
+  }
+
+  .example-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mode-actions {
+    width: 100%;
+  }
+
+  .mode-actions button {
+    margin-left: auto;
+  }
+
+  .workflow-source,
+  .code-editor {
+    min-height: 28rem;
+  }
+}

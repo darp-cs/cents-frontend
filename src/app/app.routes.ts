@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { LoginComponent } from './auth/login/login.component';
 import { RegisterComponent } from './auth/register/register.component';
 import { authGuard } from './auth/auth.guard';
+import { AgentsPageComponent } from './agents/agents-page/agents-page.component';
 import { DocumentsPageComponent } from './documents/documents-page/documents-page.component';
 import { GuidePageComponent } from './guide/guide-page/guide-page.component';
 
@@ -27,20 +28,28 @@ export const routes: Routes = [
 	{
 		path: 'tools',
 		canActivate: [authGuard],
-		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
-		data: {
-			title: 'Tools',
-			description: 'Manage the tools your assistant can call during a conversation.',
-		},
+		loadComponent: () => import('./tools/tools-page/tools-page.component').then((module) => module.ToolsPageComponent),
+	},
+	{
+		path: 'agents/new',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./agents/agent-template-editor/agent-template-editor.component').then(
+				(module) => module.AgentTemplateEditorComponent
+			),
+	},
+	{
+		path: 'agents/:name/edit',
+		canActivate: [authGuard],
+		loadComponent: () =>
+			import('./agents/agent-template-editor/agent-template-editor.component').then(
+				(module) => module.AgentTemplateEditorComponent
+			),
 	},
 	{
 		path: 'agents',
 		canActivate: [authGuard],
-		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
-		data: {
-			title: 'Agents',
-			description: 'Create and configure agents that combine models, tools and instructions.',
-		},
+		component: AgentsPageComponent,
 	},
 	{
 		path: 'knowledge-base',
