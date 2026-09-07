@@ -26,6 +26,14 @@ export interface AgentAuthoringValidateResponse {
   errors: AgentAuthoringValidationError[];
 }
 
+export interface AgentAuthoringGenerateResponse {
+  message: string;
+  generated_template: unknown | null;
+  is_valid: boolean;
+  errors: AgentAuthoringValidationError[];
+  referenced_nodes: string[];
+}
+
 export interface AgentAuthoringSchemaField {
   name: string;
   type: string;
@@ -89,6 +97,13 @@ export class AgentService {
   validateAuthoringTemplate(rawTemplate: AgentTemplate) {
     return this.http.post<AgentAuthoringValidateResponse>(`${API_BASE_URL}/agents/authoring/validate`, {
       raw_template: rawTemplate,
+    });
+  }
+
+  generateAuthoringTemplate(prompt: string, currentTemplate: AgentTemplate) {
+    return this.http.post<AgentAuthoringGenerateResponse>(`${API_BASE_URL}/agents/authoring/generate`, {
+      prompt,
+      current_template: currentTemplate,
     });
   }
 

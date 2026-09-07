@@ -39,6 +39,8 @@ interface ConnectionViewModel {
   id: string;
   kind: AgentGraphEdge['kind'];
   label: string;
+  displayLabel: string;
+  color: string;
   sourceNodeId: string;
   targetNodeId: string;
   branchLabel: string | null;
@@ -51,6 +53,13 @@ interface SourceConnectorParts {
   sourceNodeId: string;
   kind: AgentGraphEdge['kind'];
   branchLabel?: string;
+}
+
+interface EdgeRouteViewModel {
+  id: string;
+  path: string;
+  color: string;
+  markerId: string;
 }
 
 const FALLBACK_LABELS: Record<AgentNodeType, string> = {
@@ -96,9 +105,9 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
 
   readonly selectedNodeIds = signal<string[]>([]);
   readonly selectedConnectionIds = signal<string[]>([]);
+  readonly selectedNodeId = signal<string | null>(null);
+  readonly componentPickerOpen = signal(false);
   readonly assistToolsOpen = signal(false);
-  readonly editingBranchConnectionId = signal<string | null>(null);
-  readonly branchLabelDraft = signal('');
 
   readonly connectionSource = signal('');
   readonly connectionTarget = signal('');
@@ -132,6 +141,8 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
       id: edge.id,
       kind: edge.kind,
       label: this.edgeLabel(edge),
+      displayLabel: this.edgeDisplayLabel(edge),
+      color: this.edgeColor(edge.kind),
       sourceNodeId: edge.source,
       targetNodeId: edge.target,
       branchLabel: edge.branchLabel ?? null,
@@ -141,39 +152,113 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     }));
   }
 
-  toggleAssistTools() {
-    this.assistToolsOpen.update((open) => !open);
+  edgeRoutes(): EdgeRouteViewModel[] {
+    return this.graph.edges.flatMap((edge, edgeIndex) => {
+      const source = this.layout.nodeLayoutById[edge.source];
+      const target = this.layout.nodeLayoutById[edge.target];
+      if (!source || !target) {
+        return [];
+      }
+
+      const sourceX = source.x + 220;
+      const sourceY = source.y + this.edgeSourceOffset(edge, edgeIndex);
+      const targetX = target.x;
+      const targetY = target.y + 76;
+      const path = this.orthogonalEdgePath(sourceX, sourceY, targetX, targetY, edgeIndex);
+      return [
+        {
+          id: edge.id,
+          path,
+          color: this.edgeColor(edge.kind),
+          markerId: `edge-arrow-${edge.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`,
+        },
+      ];
+    });
   }
 
-  isBranchEditing(connectionId: string) {
-    return this.editingBranchConnectionId() === connectionId;
+  edgeOverlayWidth() {
+    const furthestNode = Math.max(0, ...Object.values(this.layout.nodeLayoutById).map((position) => position.x));
+    return Math.max(2400, furthestNode + 600);
   }
 
-  startBranchEdit(connectionId: string) {
-    const edge = this.graph.edges.find((candidate) => candidate.id === connectionId);
-    if (!edge || edge.kind !== 'branch' || this.disabled) {
+  edgeOverlayHeight() {
+    const lowestNode = Math.max(0, ...Object.values(this.layout.nodeLayoutById).map((position) => position.y));
+    return Math.max(1600, lowestNode + 500);
+  }
+
+  edgeOverlayTransform() {
+    return `translate(${this.layout.viewport.x}px, ${this.layout.viewport.y}px) scale(${this.layout.viewport.zoom})`;
+  }
+
+  selectedNode() {
+    const nodeId = this.selectedNodeId();
+    return nodeId ? (this.graph.nodes.find((node) => node.id === nodeId) ?? null) : null;
+  }
+
+  outgoingConnections(nodeId: string) {
+    return this.connectionViews().filter((connection) => connection.sourceNodeId === nodeId);
+  }
+
+  toggleComponentPicker() {
+    this.componentPickerOpen.update((open) => !open);
+  }
+
+  openNodeEditor(nodeId: string) {
+    this.selectedNodeId.set(nodeId);
+    this.selectedNodeIds.set([nodeId]);
+    this.componentPickerOpen.set(false);
+  }
+
+  closeNodeEditor() {
+    this.selectedNodeId.set(null);
+    this.selectedNodeIds.set([]);
+  }
+
+  updateNodeDescription(nodeId: string, description: string) {
+    this.updateGraphNode(nodeId, (node) => ({ ...node, description }));
+  }
+
+  updateNodeEditableText(nodeId: string, value: string) {
+    this.updateGraphNode(nodeId, (node) => {
+      switch (node.type) {
+        case 'structured_parser':
+          return node.config.strategy === 'llm'
+            ? { ...node, config: { ...node.config, llm_prompt_instructions: value } }
+            : node;
+        case 'condition':
+          return { ...node, config: { ...node.config, expression: value } };
+        case 'user_interrupt':
+          return { ...node, config: { ...node.config, prompt: value } };
+        case 'llm_step':
+          return { ...node, config: { ...node.config, system_prompt: value } };
+        case 'terminal_response':
+          return { ...node, config: { ...node.config, template: value } };
+        case 'service_call':
+          return node;
+      }
+    });
+  }
+
+  updateParserStrategy(nodeId: string, strategy: string) {
+    if (strategy !== 'regex' && strategy !== 'llm') {
       return;
     }
 
-    this.editingBranchConnectionId.set(connectionId);
-    this.branchLabelDraft.set(edge.branchLabel ?? 'default');
-    this.connectionError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'structured_parser' ? { ...node, config: { ...node.config, strategy } } : node
+    );
   }
 
-  cancelBranchEdit() {
-    this.editingBranchConnectionId.set(null);
-    this.branchLabelDraft.set('');
-    this.connectionError.set(null);
+  updateServiceUrl(nodeId: string, url: string) {
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, url } } : node
+    );
   }
 
-  applyBranchEdit(connectionId: string) {
+  updateBranchLabel(connectionId: string, label: string) {
     const edge = this.graph.edges.find((candidate) => candidate.id === connectionId);
-    if (!edge || edge.kind !== 'branch' || this.disabled) {
-      return;
-    }
-
-    const proposedLabel = this.branchLabelDraft().trim();
-    if (!proposedLabel) {
+    const proposedLabel = label.trim();
+    if (!edge || edge.kind !== 'branch' || !proposedLabel || this.disabled) {
       this.connectionError.set('Branch labels cannot be empty.');
       return;
     }
@@ -191,8 +276,6 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     }
 
     this.connectionError.set(null);
-    this.editingBranchConnectionId.set(null);
-    this.branchLabelDraft.set('');
     this.replaceEdgeSemantics(
       edge.id,
       { sourceNodeId: edge.source, kind: 'branch', branchLabel: proposedLabel },
@@ -200,6 +283,25 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
       true,
       false
     );
+  }
+
+  updateConnectionTarget(connectionId: string, targetNodeId: string) {
+    const edge = this.graph.edges.find((candidate) => candidate.id === connectionId);
+    if (!edge || !targetNodeId || this.disabled) {
+      return;
+    }
+
+    this.replaceEdgeSemantics(
+      edge.id,
+      { sourceNodeId: edge.source, kind: edge.kind, branchLabel: edge.branchLabel },
+      targetNodeId,
+      true,
+      false
+    );
+  }
+
+  toggleAssistTools() {
+    this.assistToolsOpen.update((open) => !open);
   }
 
   deleteEdgeById(connectionId: string) {
@@ -281,6 +383,9 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     };
 
     const nextLayout = this.withNodeLayout(nextNodeId, this.nextPlacement(), true);
+    this.selectedNodeId.set(nextNodeId);
+    this.selectedNodeIds.set([nextNodeId]);
+    this.componentPickerOpen.set(false);
     this.emitLayout(nextLayout);
     this.emitGraph(nextGraph);
   }
@@ -329,6 +434,10 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
 
     const nextLayoutById = { ...this.layout.nodeLayoutById };
     delete nextLayoutById[nodeId];
+
+    if (this.selectedNodeId() === nodeId) {
+      this.closeNodeEditor();
+    }
 
     this.emitLayout({
       ...this.layout,
@@ -422,6 +531,7 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
   onSelectionChange(event: FSelectionChangeEvent) {
     this.selectedNodeIds.set(event.nodeIds);
     this.selectedConnectionIds.set(event.connectionIds);
+    this.selectedNodeId.set(event.nodeIds[0] ?? this.selectedNodeId());
 
     const selected = new Set(event.nodeIds);
     const nextLayoutById = Object.fromEntries(
@@ -479,6 +589,7 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
   clearSelection() {
     this.selectedNodeIds.set([]);
     this.selectedConnectionIds.set([]);
+    this.selectedNodeId.set(null);
 
     const nextLayoutById = Object.fromEntries(
       Object.entries(this.layout.nodeLayoutById).map(([nodeId, nodeLayout]) => [
@@ -665,10 +776,6 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     const toDelete = new Set(edgeIds);
     this.selectedConnectionIds.update((connectionIds) => connectionIds.filter((id) => !toDelete.has(id)));
 
-    if (edgeIds.includes(this.editingBranchConnectionId() ?? '')) {
-      this.cancelBranchEdit();
-    }
-
     this.emitGraph({
       ...this.graph,
       edges: this.graph.edges.filter((edge) => !toDelete.has(edge.id)),
@@ -720,6 +827,67 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     }
 
     return edge.kind;
+  }
+
+  private edgeDisplayLabel(edge: AgentGraphEdge) {
+    if (edge.kind === 'on_failure') {
+      return 'If it fails';
+    }
+
+    if (edge.kind === 'branch') {
+      return edge.branchLabel === 'default' ? 'Otherwise' : `If ${edge.branchLabel ?? 'condition'}`;
+    }
+
+    return 'Next';
+  }
+
+  private edgeColor(kind: AgentGraphEdge['kind']) {
+    if (kind === 'on_failure') {
+      return '#b94718';
+    }
+
+    if (kind === 'branch') {
+      return '#5c48bd';
+    }
+
+    return '#16744a';
+  }
+
+  private edgeSourceOffset(edge: AgentGraphEdge, edgeIndex: number) {
+    if (edge.kind === 'next') {
+      return 104;
+    }
+
+    if (edge.kind === 'on_failure') {
+      return 132;
+    }
+
+    const siblingIndex = this.graph.edges
+      .filter((candidate) => candidate.source === edge.source && candidate.kind === 'branch')
+      .findIndex((candidate) => candidate.id === edge.id);
+    return 112 + Math.max(0, siblingIndex) * 28 + (edgeIndex % 2) * 2;
+  }
+
+  private orthogonalEdgePath(sourceX: number, sourceY: number, targetX: number, targetY: number, edgeIndex: number) {
+    if (targetX >= sourceX + 64) {
+      const middleX = sourceX + (targetX - sourceX) / 2;
+      return `M ${sourceX} ${sourceY} L ${middleX} ${sourceY} L ${middleX} ${targetY} L ${targetX} ${targetY}`;
+    }
+
+    const sideX = Math.max(sourceX, targetX + 220) + 72 + (edgeIndex % 4) * 18;
+    const upperY = Math.max(24, Math.min(sourceY, targetY) - 68 - (edgeIndex % 3) * 18);
+    return `M ${sourceX} ${sourceY} L ${sideX} ${sourceY} L ${sideX} ${upperY} L ${targetX - 36} ${upperY} L ${targetX - 36} ${targetY} L ${targetX} ${targetY}`;
+  }
+
+  private updateGraphNode(nodeId: string, updater: (node: AgentGraphNode) => AgentGraphNode) {
+    if (this.disabled) {
+      return;
+    }
+
+    this.emitGraph({
+      ...this.graph,
+      nodes: this.graph.nodes.map((node) => (node.id === nodeId ? updater(node) : node)),
+    });
   }
 
   private supportsNextEdge(type: AgentNodeType) {

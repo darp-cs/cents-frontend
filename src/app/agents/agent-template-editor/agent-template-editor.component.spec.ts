@@ -76,6 +76,24 @@ describe('AgentTemplateEditorComponent', () => {
         errors: [],
       })
     ),
+    generateAuthoringTemplate: vi.fn((_prompt: string, _template: AgentTemplate) =>
+      of({
+        message: 'Updated the final response.',
+        generated_template: {
+          ...loadedTemplate,
+          nodes: [
+            {
+              id: 'final',
+              type: 'terminal_response' as const,
+              config: { template: 'Generated response', status: 'success' as const, include_state_keys: [] },
+            },
+          ],
+        },
+        is_valid: true,
+        errors: [],
+        referenced_nodes: ['final'],
+      })
+    ),
     createAgentTemplate: vi.fn((_name: string, _template: AgentTemplate) => of(validRecord)),
     createAgentVersion: vi.fn((_name: string, _template: AgentTemplate) => of(validRecord)),
     getAuthoringSchema: vi.fn(() =>
@@ -139,6 +157,7 @@ describe('AgentTemplateEditorComponent', () => {
   function configure(routeName: string | null) {
     mockService.getLatestAgent.mockClear();
     mockService.validateAuthoringTemplate.mockClear();
+    mockService.generateAuthoringTemplate.mockClear();
     mockService.createAgentTemplate.mockClear();
     mockService.createAgentVersion.mockClear();
     router.navigate.mockClear();
@@ -220,6 +239,54 @@ describe('AgentTemplateEditorComponent', () => {
 
     const saveButton = fixture.nativeElement.querySelector('[data-testid="save-agent"]') as HTMLButtonElement;
     expect(saveButton.disabled).toBe(true);
+  });
+
+  it('updates prompts and conditional routes through the conversational editor', async () => {
+    await configure(null);
+    fixture = TestBed.createComponent(AgentTemplateEditorComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    component.onNodePromptInput('ask_user_confirmation', 'Can I continue with this request?');
+    component.onNodePromptInput('route_request', 'parsed_data.amount >= 500');
+    component.onConditionBranchTargetInput('route_request', 'true', 'draft_response');
+
+    const interruptNode = component.template().nodes.find((node) => node.id === 'ask_user_confirmation');
+    const conditionNode = component.template().nodes.find((node) => node.id === 'route_request');
+
+    if (!interruptNode || interruptNode.type !== 'user_interrupt') {
+      throw new Error('Expected starter user interrupt node');
+    }
+    if (!conditionNode || conditionNode.type !== 'condition') {
+      throw new Error('Expected starter condition node');
+    }
+
+    expect(interruptNode.config.prompt).toBe('Can I continue with this request?');
+    expect(conditionNode.config.expression).toBe('parsed_data.amount >= 500');
+    expect(conditionNode.branches['true']).toBe('draft_response');
+    expect(component.draftJsonPreview()).toContain('Can I continue with this request?');
+  });
+
+  it('generates and applies a validated draft from a prompt with reference tokens', async () => {
+    await configure(null);
+    fixture = TestBed.createComponent(AgentTemplateEditorComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    component.onAuthoringPromptInput('Update');
+    component.insertAuthoringToken('@final');
+    component.insertAuthoringToken('/reply');
+    expect(component.authoringPrompt()).toBe('Update @final /reply ');
+
+    component.generateFromDescription();
+    fixture.detectChanges();
+
+    expect(mockService.generateAuthoringTemplate).toHaveBeenCalledTimes(1);
+    expect(mockService.generateAuthoringTemplate.mock.calls[0]?.[0]).toBe('Update @final /reply');
+    expect(component.template().nodes[0].id).toBe('final');
+    expect(component.draftJsonPreview()).toContain('Generated response');
+    expect(component.authoringMessages().at(-1)?.status).toBe('applied');
+    expect(component.validationStatus()).toBe('valid');
   });
 
   it('shares one canonical draft across mode switching', async () => {

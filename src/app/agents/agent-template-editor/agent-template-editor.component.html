@@ -42,92 +42,348 @@
 
     @if (editorMode() === 'natural-language') {
       <section class="mode-panel natural-mode">
-        <h2>Workflow Narrative</h2>
-        <p class="mode-description">
-          This narrative mode edits canonical workflow metadata while the full execution graph is managed in Visual Graph mode.
-        </p>
-        <div class="field-grid">
-          <label>
-            Template version
-            <input
-              type="text"
-              [value]="template().template_version"
-              [disabled]="isBootstrapping() || isSaving()"
-              (input)="onTemplateVersionInput($any($event.target).value)"
-            />
-          </label>
-
-          <label>
-            Entry node
-            <select
-              [value]="template().entry_node"
-              [disabled]="isBootstrapping() || isSaving()"
-              (change)="onEntryNodeInput($any($event.target).value)"
-            >
-              @for (nodeId of nodeIds(); track nodeId) {
-                <option [value]="nodeId">{{ nodeId }}</option>
-              }
-            </select>
-          </label>
-
-          <label>
-            Guardrail max iterations
-            <input
-              type="number"
-              min="1"
-              [value]="template().guardrails.max_iterations"
-              [disabled]="isBootstrapping() || isSaving()"
-              (input)="onMaxIterationsInput($any($event.target).value)"
-            />
-          </label>
-
-          <label>
-            Judge override
-            <select
-              [value]="template().guardrails.judge_enabled_override === null ? 'null' : (template().guardrails.judge_enabled_override ? 'true' : 'false')"
-              [disabled]="isBootstrapping() || isSaving()"
-              (change)="onJudgeOverrideInput($any($event.target).value)"
-            >
-              <option value="null">inherit platform</option>
-              <option value="true">force enabled</option>
-              <option value="false">force disabled</option>
-            </select>
-          </label>
+        <div class="conversation-heading">
+          <div>
+            <span class="section-eyebrow">Natural language</span>
+            <h2>Describe your workflow</h2>
+          </div>
+          <span class="entry-badge">Starts at {{ template().entry_node }}</span>
         </div>
 
-        <label>
-          Banned topic override (comma-separated)
-          <input
-            type="text"
-            [value]="(template().guardrails.banned_topics_override ?? []).join(', ')"
-            [disabled]="isBootstrapping() || isSaving()"
-            (input)="onBannedTopicsInput($any($event.target).value)"
-          />
-        </label>
+        <section class="prompt-workbench" aria-label="Workflow description conversation">
+          <div class="authoring-thread" aria-live="polite">
+            @for (message of authoringMessages(); track $index) {
+              <article
+                class="authoring-message"
+                [class.user-message]="message.role === 'user'"
+                [class.assistant-message]="message.role === 'assistant'"
+                [class.not-applied]="message.status === 'not-applied'"
+              >
+                <span>{{ message.role === 'user' ? 'You' : 'Cents' }}</span>
+                <p>{{ message.content }}</p>
+                @if (message.status === 'applied') {
+                  <small>Applied to the draft</small>
+                }
+              </article>
+            }
+            @if (isGenerating()) {
+              <article class="authoring-message assistant-message pending-message">
+                <span>Cents</span>
+                <p>Building and validating the workflow...</p>
+              </article>
+            }
+          </div>
 
-        <div class="narrative-list">
-          @for (node of template().nodes; track node.id) {
-            <article class="narrative-node">
-              <div class="node-title-row">
-                <h3>{{ node.id }}</h3>
-                <span class="node-type">{{ nodeTypeIcon(node) }} {{ nodeTypeLabel(node) }}</span>
+          <label class="prompt-composer">
+            Workflow description
+            <textarea
+              rows="6"
+              [value]="authoringPrompt()"
+              [disabled]="isGenerating() || isBootstrapping() || isSaving()"
+              placeholder="Build an expense approval workflow. /listen for amount, /if it is over 1000, update @request_authorization, then /reply using #service_results."
+              (input)="onAuthoringPromptInput($any($event.target).value)"
+              (keydown.control.enter)="generateFromDescription()"
+            ></textarea>
+          </label>
+
+          <div class="token-tray" aria-label="Prompt references and workflow units">
+            <details open>
+              <summary><code>@</code> Components</summary>
+              <div class="token-list">
+                @for (item of componentReferenceTokens(); track item.token) {
+                  <button
+                    type="button"
+                    [title]="item.description"
+                    [disabled]="isGenerating()"
+                    (click)="insertAuthoringToken(item.token)"
+                  >
+                    <code>{{ item.token }}</code>
+                    <span>{{ item.description }}</span>
+                  </button>
+                }
               </div>
-              <textarea
-                [value]="node.description ?? ''"
-                [disabled]="isBootstrapping() || isSaving()"
-                rows="2"
-                (input)="onNodeDescriptionInput(node.id, $any($event.target).value)"
-              ></textarea>
+            </details>
 
-              @if (node.type === 'condition') {
-                <p class="transition-text">Branches: {{ branchEntries(node).length }}</p>
-              }
-              @if (node.type !== 'condition' && node.type !== 'terminal_response') {
-                <p class="transition-text">Next: {{ node.next }}</p>
-              }
+            <details>
+              <summary><code>#</code> Runtime data</summary>
+              <div class="token-list">
+                @for (item of dataReferenceTokens; track item.token) {
+                  <button
+                    type="button"
+                    [title]="item.description"
+                    [disabled]="isGenerating()"
+                    (click)="insertAuthoringToken(item.token)"
+                  >
+                    <code>{{ item.token }}</code>
+                    <span>{{ item.description }}</span>
+                  </button>
+                }
+              </div>
+            </details>
+
+            <details>
+              <summary><code>/</code> Workflow units</summary>
+              <div class="token-list">
+                @for (item of unitCommandTokens; track item.token) {
+                  <button
+                    type="button"
+                    [title]="item.description"
+                    [disabled]="isGenerating()"
+                    (click)="insertAuthoringToken(item.token)"
+                  >
+                    <code>{{ item.token }}</code>
+                    <span>{{ item.description }}</span>
+                  </button>
+                }
+              </div>
+            </details>
+          </div>
+
+          <div class="prompt-actions">
+            <span>Use Ctrl+Enter to generate.</span>
+            <button
+              type="button"
+              [disabled]="!canGenerate() || isBootstrapping() || isSaving()"
+              (click)="generateFromDescription()"
+            >
+              {{ isGenerating() ? 'Generating...' : 'Generate workflow' }}
+            </button>
+          </div>
+
+          @if (generationError()) {
+            <p class="error">{{ generationError() }}</p>
+          }
+        </section>
+
+        <div class="draft-heading">
+          <span class="section-eyebrow">Current draft</span>
+          <h2>Conversation flow</h2>
+        </div>
+
+        <div class="conversation-list">
+          @for (node of template().nodes; track node.id; let stepIndex = $index) {
+            <article class="conversation-step" [class.condition-step]="node.type === 'condition'">
+              <div class="turn-rail" aria-hidden="true">
+                <span>{{ stepIndex + 1 }}</span>
+                <i></i>
+              </div>
+
+              <div class="turn-body">
+                <header class="turn-header">
+                  <div>
+                    <span class="turn-verb">
+                      @switch (node.type) {
+                        @case ('structured_parser') { Listen }
+                        @case ('condition') { Decide }
+                        @case ('service_call') { Act }
+                        @case ('user_interrupt') { Ask }
+                        @case ('llm_step') { Think }
+                        @case ('terminal_response') { Reply }
+                      }
+                    </span>
+                    <h3>{{ node.id }}</h3>
+                  </div>
+                  <span class="node-type">{{ nodeTypeIcon(node) }} {{ nodeTypeLabel(node) }}</span>
+                </header>
+
+                <label class="step-note">
+                  Step note
+                  <input
+                    type="text"
+                    [value]="node.description ?? ''"
+                    [disabled]="isBootstrapping() || isSaving()"
+                    (input)="onNodeDescriptionInput(node.id, $any($event.target).value)"
+                  />
+                </label>
+
+                @switch (node.type) {
+                  @case ('structured_parser') {
+                    <div class="conversation-line">
+                      <span class="speaker-label">User says</span>
+                      <span>Capture {{ node.config.fields.length }} structured {{ node.config.fields.length === 1 ? 'field' : 'fields' }}.</span>
+                    </div>
+                    @if (node.config.strategy === 'llm') {
+                      <label class="prompt-field">
+                        Extraction instructions
+                        <textarea
+                          rows="4"
+                          [value]="node.config.llm_prompt_instructions ?? ''"
+                          [disabled]="isBootstrapping() || isSaving()"
+                          (input)="onNodePromptInput(node.id, $any($event.target).value)"
+                        ></textarea>
+                      </label>
+                    }
+                  }
+                  @case ('condition') {
+                    <section class="if-block" aria-label="Conditional routes">
+                      <label class="if-expression">
+                        <span>IF</span>
+                        <textarea
+                          rows="2"
+                          spellcheck="false"
+                          [value]="node.config.expression"
+                          [disabled]="isBootstrapping() || isSaving()"
+                          (input)="onNodePromptInput(node.id, $any($event.target).value)"
+                        ></textarea>
+                      </label>
+
+                      <div class="branch-list">
+                        @for (branch of branchEntries(node); track branch.label; let branchIndex = $index) {
+                          <label class="branch-line">
+                            <span>{{ branchConversationLabel(branch.label, branchIndex) }}</span>
+                            <select
+                              [value]="branch.target"
+                              [disabled]="isBootstrapping() || isSaving()"
+                              (change)="onConditionBranchTargetInput(node.id, branch.label, $any($event.target).value)"
+                            >
+                              @for (nodeId of nodeIds(); track nodeId) {
+                                <option [value]="nodeId">go to {{ nodeId }}</option>
+                              }
+                            </select>
+                          </label>
+                        }
+                      </div>
+                    </section>
+                  }
+                  @case ('service_call') {
+                    <div class="conversation-line">
+                      <span class="speaker-label">Run</span>
+                      <code>{{ node.config.method }} {{ node.config.url || node.config.tool_name || 'service' }}</code>
+                    </div>
+                  }
+                  @case ('user_interrupt') {
+                    <label class="prompt-field">
+                      Ask the user
+                      <textarea
+                        rows="4"
+                        [value]="node.config.prompt"
+                        [disabled]="isBootstrapping() || isSaving()"
+                        (input)="onNodePromptInput(node.id, $any($event.target).value)"
+                      ></textarea>
+                    </label>
+                  }
+                  @case ('llm_step') {
+                    <label class="prompt-field">
+                      Model instructions
+                      <textarea
+                        rows="5"
+                        [value]="node.config.system_prompt"
+                        [disabled]="isBootstrapping() || isSaving()"
+                        (input)="onNodePromptInput(node.id, $any($event.target).value)"
+                      ></textarea>
+                    </label>
+                  }
+                  @case ('terminal_response') {
+                    <label class="prompt-field reply-field">
+                      Reply with
+                      <textarea
+                        rows="3"
+                        [value]="node.config.template"
+                        [disabled]="isBootstrapping() || isSaving()"
+                        (input)="onNodePromptInput(node.id, $any($event.target).value)"
+                      ></textarea>
+                    </label>
+                  }
+                }
+
+                @if (node.type !== 'condition' && node.type !== 'terminal_response') {
+                  <div class="transition-controls">
+                    <label>
+                      Then go to
+                      <select
+                        [value]="node.next"
+                        [disabled]="isBootstrapping() || isSaving()"
+                        (change)="onNextNodeInput(node.id, $any($event.target).value)"
+                      >
+                        @for (nodeId of nodeIds(); track nodeId) {
+                          <option [value]="nodeId">{{ nodeId }}</option>
+                        }
+                      </select>
+                    </label>
+
+                    @if (node.type === 'structured_parser' || node.type === 'service_call' || node.type === 'llm_step') {
+                      <label>
+                        If this fails
+                        <select
+                          [value]="node.on_failure ?? ''"
+                          [disabled]="isBootstrapping() || isSaving()"
+                          (change)="onFailureNodeInput(node.id, $any($event.target).value)"
+                        >
+                          <option value="">No failure route</option>
+                          @for (nodeId of nodeIds(); track nodeId) {
+                            <option [value]="nodeId">go to {{ nodeId }}</option>
+                          }
+                        </select>
+                      </label>
+                    }
+                  </div>
+                }
+              </div>
             </article>
           }
         </div>
+
+        <details class="workflow-settings">
+          <summary>Workflow settings</summary>
+          <div class="field-grid">
+            <label>
+              Template version
+              <input
+                type="text"
+                [value]="template().template_version"
+                [disabled]="isBootstrapping() || isSaving()"
+                (input)="onTemplateVersionInput($any($event.target).value)"
+              />
+            </label>
+
+            <label>
+              Entry node
+              <select
+                [value]="template().entry_node"
+                [disabled]="isBootstrapping() || isSaving()"
+                (change)="onEntryNodeInput($any($event.target).value)"
+              >
+                @for (nodeId of nodeIds(); track nodeId) {
+                  <option [value]="nodeId">{{ nodeId }}</option>
+                }
+              </select>
+            </label>
+
+            <label>
+              Maximum iterations
+              <input
+                type="number"
+                min="1"
+                [value]="template().guardrails.max_iterations"
+                [disabled]="isBootstrapping() || isSaving()"
+                (input)="onMaxIterationsInput($any($event.target).value)"
+              />
+            </label>
+
+            <label>
+              Judge override
+              <select
+                [value]="template().guardrails.judge_enabled_override === null ? 'null' : (template().guardrails.judge_enabled_override ? 'true' : 'false')"
+                [disabled]="isBootstrapping() || isSaving()"
+                (change)="onJudgeOverrideInput($any($event.target).value)"
+              >
+                <option value="null">Inherit platform</option>
+                <option value="true">Force enabled</option>
+                <option value="false">Force disabled</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Banned topics
+            <input
+              type="text"
+              [value]="(template().guardrails.banned_topics_override ?? []).join(', ')"
+              [disabled]="isBootstrapping() || isSaving()"
+              (input)="onBannedTopicsInput($any($event.target).value)"
+            />
+          </label>
+        </details>
 
         @if (!isEditing()) {
           <button type="button" class="secondary" (click)="resetToStarter()">Reset To Starter</button>

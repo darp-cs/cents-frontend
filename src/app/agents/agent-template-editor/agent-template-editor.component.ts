@@ -14,6 +14,18 @@ import { AgentCanvasPaletteItem, AgentWorkflowCanvasComponent } from './agent-wo
 
 type EditorMode = 'natural-language' | 'visual-graph' | 'advanced-json';
 
+interface AuthoringMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  status?: 'applied' | 'not-applied';
+}
+
+interface AuthoringToken {
+  token: string;
+  label: string;
+  description: string;
+}
+
 const SUPPORTED_NODE_TYPES: AgentNodeType[] = [
   'structured_parser',
   'condition',
@@ -71,6 +83,21 @@ const ICON_BY_NODE_TYPE: Record<AgentNodeType, string> = {
   terminal_response: 'END',
 };
 
+const DATA_REFERENCE_TOKENS: AuthoringToken[] = [
+  { token: '#last_message', label: 'Latest user message', description: 'The most recent message from the user.' },
+  { token: '#parsed_data', label: 'Parsed data', description: 'Structured fields extracted earlier in the workflow.' },
+  { token: '#service_results', label: 'Service results', description: 'Data returned by service or tool calls.' },
+];
+
+const UNIT_COMMAND_TOKENS: AuthoringToken[] = [
+  { token: '/listen', label: 'Listen', description: 'Add a component that extracts structured information.' },
+  { token: '/if', label: 'Condition', description: 'Add an IF/otherwise decision.' },
+  { token: '/call', label: 'Call service', description: 'Add an HTTP or tool call.' },
+  { token: '/ask', label: 'Ask user', description: 'Pause and ask the user for information.' },
+  { token: '/think', label: 'Model step', description: 'Add an LLM reasoning or writing step.' },
+  { token: '/reply', label: 'Reply', description: 'Add a final response to the user.' },
+];
+
 @Component({
   selector: 'app-agent-template-editor',
   templateUrl: './agent-template-editor.component.html',
@@ -94,6 +121,17 @@ export class AgentTemplateEditorComponent {
   readonly paletteLoading = signal(true);
   readonly paletteError = signal<string | null>(null);
   readonly paletteItems = signal<AgentCanvasPaletteItem[]>(DEFAULT_PALETTE);
+  readonly authoringPrompt = signal('');
+  readonly isGenerating = signal(false);
+  readonly generationError = signal<string | null>(null);
+  readonly authoringMessages = signal<AuthoringMessage[]>([
+    {
+      role: 'assistant',
+      content: 'Describe the workflow you want. Reference components with @, data with #, or insert a unit with /.',
+    },
+  ]);
+  readonly dataReferenceTokens = DATA_REFERENCE_TOKENS;
+  readonly unitCommandTokens = UNIT_COMMAND_TOKENS;
 
   readonly agentName = this.draftStore.agentName;
   readonly baselineVersion = this.draftStore.baselineVersion;
@@ -116,6 +154,14 @@ export class AgentTemplateEditorComponent {
   );
 
   readonly nodeIds = computed(() => this.template().nodes.map((node) => node.id));
+  readonly componentReferenceTokens = computed<AuthoringToken[]>(() =>
+    this.template().nodes.map((node) => ({
+      token: `@${node.id}`,
+      label: node.id,
+      description: `${this.nodeTypeLabel(node)} component`,
+    }))
+  );
+  readonly canGenerate = computed(() => this.authoringPrompt().trim().length > 0 && !this.isGenerating());
 
   readonly canValidate = computed(
     () => this.agentName().trim().length > 0 && this.validationStatus() !== 'validating' && !this.isBootstrapping()
@@ -152,6 +198,65 @@ export class AgentTemplateEditorComponent {
 
   setEditorMode(mode: EditorMode) {
     this.editorMode.set(mode);
+  }
+
+  onAuthoringPromptInput(value: string) {
+    this.authoringPrompt.set(value);
+    this.generationError.set(null);
+  }
+
+  insertAuthoringToken(token: string) {
+    const current = this.authoringPrompt();
+    const separator = current.length > 0 && !/\s$/.test(current) ? ' ' : '';
+    this.authoringPrompt.set(`${current}${separator}${token} `);
+  }
+
+  generateFromDescription() {
+    const prompt = this.authoringPrompt().trim();
+    if (!prompt || this.isGenerating()) {
+      return;
+    }
+
+    this.authoringMessages.update((messages) => [...messages, { role: 'user', content: prompt }]);
+    this.authoringPrompt.set('');
+    this.generationError.set(null);
+    this.isGenerating.set(true);
+
+    this.agentService
+      .generateAuthoringTemplate(prompt, this.template())
+      .pipe(
+        tap((result) => {
+          const generatedTemplate = result.generated_template;
+          if (result.is_valid && generatedTemplate && isAgentTemplate(generatedTemplate)) {
+            this.draftStore.setTemplate(generatedTemplate);
+            this.draftStore.setValidationResult(true, []);
+            this.authoringMessages.update((messages) => [
+              ...messages,
+              { role: 'assistant', content: result.message, status: 'applied' },
+            ]);
+            return;
+          }
+
+          const details = result.errors.map((error) => error.message).join(' ');
+          const message = details || 'The generated workflow did not pass validation, so your current draft was kept.';
+          this.generationError.set(message);
+          this.authoringMessages.update((messages) => [
+            ...messages,
+            { role: 'assistant', content: `${result.message} ${message}`.trim(), status: 'not-applied' },
+          ]);
+        }),
+        catchError((error) => {
+          const message = this.toErrorMessage(error, 'Failed to generate a workflow from that description.');
+          this.generationError.set(message);
+          this.authoringMessages.update((messages) => [
+            ...messages,
+            { role: 'assistant', content: message, status: 'not-applied' },
+          ]);
+          return EMPTY;
+        }),
+        finalize(() => this.isGenerating.set(false))
+      )
+      .subscribe();
   }
 
   resetToStarter() {
@@ -208,6 +313,63 @@ export class AgentTemplateEditorComponent {
       ...node,
       description: value,
     }));
+  }
+
+  onNodePromptInput(nodeId: string, value: string) {
+    this.updateNode(nodeId, (node) => {
+      switch (node.type) {
+        case 'structured_parser':
+          return node.config.strategy === 'llm'
+            ? { ...node, config: { ...node.config, llm_prompt_instructions: value } }
+            : node;
+        case 'condition':
+          return { ...node, config: { ...node.config, expression: value } };
+        case 'user_interrupt':
+          return { ...node, config: { ...node.config, prompt: value } };
+        case 'llm_step':
+          return { ...node, config: { ...node.config, system_prompt: value } };
+        case 'terminal_response':
+          return { ...node, config: { ...node.config, template: value } };
+        case 'service_call':
+          return node;
+      }
+    });
+  }
+
+  onNextNodeInput(nodeId: string, targetNodeId: string) {
+    this.updateNode(nodeId, (node) => {
+      if (node.type === 'condition' || node.type === 'terminal_response') {
+        return node;
+      }
+
+      return { ...node, next: targetNodeId };
+    });
+  }
+
+  onFailureNodeInput(nodeId: string, targetNodeId: string) {
+    this.updateNode(nodeId, (node) => {
+      if (node.type !== 'structured_parser' && node.type !== 'service_call' && node.type !== 'llm_step') {
+        return node;
+      }
+
+      return { ...node, on_failure: targetNodeId || undefined };
+    });
+  }
+
+  onConditionBranchTargetInput(nodeId: string, branchLabel: string, targetNodeId: string) {
+    this.updateNode(nodeId, (node) => {
+      if (node.type !== 'condition') {
+        return node;
+      }
+
+      return {
+        ...node,
+        branches: {
+          ...node.branches,
+          [branchLabel]: targetNodeId,
+        },
+      };
+    });
   }
 
   onGraphChanged(nextGraph: AgentTemplateGraph) {
@@ -348,6 +510,14 @@ export class AgentTemplateEditorComponent {
     }
 
     return Object.entries(node.branches).map(([label, target]) => ({ label, target }));
+  }
+
+  branchConversationLabel(label: string, index: number) {
+    if (label === 'default') {
+      return 'Otherwise';
+    }
+
+    return index === 0 ? `Then, when ${label}` : `Or, when ${label}`;
   }
 
   private updateNode(nodeId: string, updater: (node: AgentTemplateNode) => AgentTemplateNode) {

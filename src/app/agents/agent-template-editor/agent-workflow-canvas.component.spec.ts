@@ -98,6 +98,54 @@ describe('AgentWorkflowCanvasComponent', () => {
       throw new Error('Expected graph mutation to emit');
     }
     expect(emitted.nodes.some((node) => node.type === 'service_call')).toBe(true);
+    expect(component.selectedNodeId()).toBe('service_call_1');
+    expect(component.componentPickerOpen()).toBe(false);
+  });
+
+  it('opens one node editor at a time and updates prompt fields', () => {
+    const promptTemplate: AgentTemplate = {
+      template_version: '1.0.0',
+      entry_node: 'ask',
+      guardrails: baseTemplate.guardrails,
+      nodes: [
+        {
+          id: 'ask',
+          type: 'user_interrupt',
+          config: {
+            prompt: 'Continue?',
+            output_key: 'confirmation',
+            expected_type: 'confirmation',
+          },
+          next: 'finish',
+        },
+        {
+          id: 'finish',
+          type: 'terminal_response',
+          config: { template: 'Done', status: 'success', include_state_keys: [] },
+        },
+      ],
+    };
+    const graph = templateToGraph(promptTemplate);
+    component.graph = graph;
+    component.layout = layoutFromGraph(graph);
+    component.graphChange.subscribe((nextGraph) => {
+      component.graph = nextGraph;
+    });
+
+    component.openNodeEditor('ask');
+    expect(component.selectedNode()?.id).toBe('ask');
+
+    component.updateNodeEditableText('ask', 'Would you like to continue?');
+    const askNode = component.graph.nodes.find((node) => node.id === 'ask');
+    expect(askNode?.type).toBe('user_interrupt');
+    if (!askNode || askNode.type !== 'user_interrupt') {
+      throw new Error('Expected user interrupt node');
+    }
+    expect(askNode.config.prompt).toBe('Would you like to continue?');
+
+    component.openNodeEditor('finish');
+    expect(component.selectedNode()?.id).toBe('finish');
+    expect(component.selectedNodeIds()).toEqual(['finish']);
   });
 
   it('creates an edge from connector handles', () => {
@@ -119,6 +167,18 @@ describe('AgentWorkflowCanvasComponent', () => {
       throw new Error('Expected graph mutation to emit');
     }
     expect(emitted.edges.some((edge) => edge.source === 'parse' && edge.kind === 'on_failure')).toBe(true);
+  });
+
+  it('renders a deterministic visible route for every graph edge', () => {
+    const routes = component.edgeRoutes();
+
+    expect(routes).toHaveLength(component.graph.edges.length);
+    expect(routes.every((route) => route.path.startsWith('M ') && route.path.includes(' L '))).toBe(true);
+    expect(routes.every((route) => route.color.length > 0 && route.markerId.startsWith('edge-arrow-'))).toBe(true);
+
+    const renderedPaths = fixture.nativeElement.querySelectorAll('.visible-edge-line') as NodeListOf<SVGPathElement>;
+    expect(renderedPaths.length).toBe(component.graph.edges.length);
+    expect(Array.from(renderedPaths).every((path) => (path.getAttribute('d') ?? '').length > 0)).toBe(true);
   });
 
   it('reconnects and deletes edges', () => {
@@ -165,7 +225,7 @@ describe('AgentWorkflowCanvasComponent', () => {
     expect(component.assistToolsOpen()).toBe(false);
   });
 
-  it('renames branch edge labels inline and remaps edge id', () => {
+  it('renames branch labels from the node route editor and remaps edge id', () => {
     let emitted: AgentTemplateGraph | undefined;
     component.graphChange.subscribe((graph) => {
       emitted = graph;
@@ -191,9 +251,7 @@ describe('AgentWorkflowCanvasComponent', () => {
       throw new Error('Expected condition branch edge to exist');
     }
 
-    component.startBranchEdit(branchEdge.id);
-    component.branchLabelDraft.set('approved');
-    component.applyBranchEdit(branchEdge.id);
+    component.updateBranchLabel(branchEdge.id, 'approved');
 
     const renamed = component.graph.edges.find(
       (edge) =>
@@ -205,10 +263,9 @@ describe('AgentWorkflowCanvasComponent', () => {
     expect(renamed).toBeDefined();
     expect(renamed?.id).toContain('::branch::approved::');
     expect(component.graph.edges.some((edge) => edge.id === branchEdge.id)).toBe(false);
-    expect(component.isBranchEditing(branchEdge.id)).toBe(false);
   });
 
-  it('rejects duplicate branch labels during inline rename', () => {
+  it('rejects duplicate branch labels in the node route editor', () => {
     const existingTemplate: AgentTemplate = {
       template_version: '1.0.0',
       entry_node: 'check',
@@ -255,12 +312,9 @@ describe('AgentWorkflowCanvasComponent', () => {
       throw new Error('Expected default branch edge');
     }
 
-    component.startBranchEdit(defaultEdge.id);
-    component.branchLabelDraft.set('approved');
-    component.applyBranchEdit(defaultEdge.id);
+    component.updateBranchLabel(defaultEdge.id, 'approved');
 
     expect(component.connectionError()).toContain("already exists");
-    expect(component.isBranchEditing(defaultEdge.id)).toBe(true);
     expect(component.graph.edges.some((edge) => edge.id === defaultEdge.id)).toBe(true);
   });
 
@@ -351,5 +405,7 @@ describe('AgentWorkflowCanvasComponent', () => {
     expect(nodeViews.find((node) => node.id === 'finish')?.supportsNext).toBe(false);
     expect(connectionViews.some((connection) => connection.label === 'branch:approved')).toBe(true);
     expect(connectionViews.some((connection) => connection.label === 'branch:default')).toBe(true);
+    expect(connectionViews.some((connection) => connection.displayLabel === 'If approved')).toBe(true);
+    expect(connectionViews.some((connection) => connection.displayLabel === 'Otherwise')).toBe(true);
   });
 });

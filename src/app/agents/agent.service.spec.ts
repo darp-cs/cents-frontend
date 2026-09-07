@@ -171,6 +171,25 @@ describe('AgentService', () => {
     });
   });
 
+  it('calls POST /agents/authoring/generate with prompt and current draft', () => {
+    service.generateAuthoringTemplate('Update @final with /reply using #parsed_data.', template).subscribe();
+
+    const request = httpController.expectOne(`${API_BASE_URL}/agents/authoring/generate`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({
+      prompt: 'Update @final with /reply using #parsed_data.',
+      current_template: template,
+    });
+
+    request.flush({
+      message: 'Updated the final reply.',
+      generated_template: template,
+      is_valid: true,
+      errors: [],
+      referenced_nodes: ['final'],
+    });
+  });
+
   it('calls GET /agents/authoring/schema for graph palette metadata', () => {
     service.getAuthoringSchema().subscribe();
 
