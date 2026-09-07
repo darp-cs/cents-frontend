@@ -28,11 +28,7 @@ export const routes: Routes = [
 	{
 		path: 'tools',
 		canActivate: [authGuard],
-		loadComponent: () => import('./shell/placeholder-page/placeholder-page.component').then((module) => module.PlaceholderPageComponent),
-		data: {
-			title: 'Tools',
-			description: 'Manage the tools your assistant can call during a conversation.',
-		},
+		loadComponent: () => import('./tools/tools-page/tools-page.component').then((module) => module.ToolsPageComponent),
 	},
 	{
 		path: 'agents/new',

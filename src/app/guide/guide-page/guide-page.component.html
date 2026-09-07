@@ -26,8 +26,9 @@
       <li><strong>Conversation workflow</strong> &mdash; create, rename, delete, and switch conversations from the chat panel history.</li>
       <li><strong>Streaming chat responses</strong> &mdash; assistant replies stream live using server-sent events (SSE).</li>
       <li><strong>Document ingestion</strong> &mdash; upload files and review ingested document records.</li>
+      <li><strong>Tool management</strong> &mdash; create, edit, enable or disable, filter, and delete tools used for retrieval and execution.</li>
       <li><strong>Agent management</strong> &mdash; list agent templates, inspect version history, toggle enabled state, and delete templates.</li>
-      <li><strong>Agent template authoring</strong> &mdash; create or edit templates in a visual workflow canvas powered by <code>@foblex/flow</code>, validate them, and save as versioned updates.</li>
+      <li><strong>Agent template authoring</strong> &mdash; describe a sub-agent in readable text, review or adjust the equivalent visual graph, configure Action steps as HTTP or tool calls, validate it, and save versioned updates.</li>
       <li><strong>Model gateway features</strong> &mdash; generation and embeddings are routed through a model-catalog-driven LLM service.</li>
     </ul>
   </section>
@@ -48,7 +49,7 @@
     <ul>
       <li><strong>Guide</strong> &mdash; this page. It is the landing view after you sign in.</li>
       <li><strong>Documents</strong> &mdash; upload files and review everything that has been ingested.</li>
-      <li><strong>Tools</strong> &mdash; frontend management page is not available yet.</li>
+      <li><strong>Tools</strong> &mdash; register tools, edit descriptions and executable code, test-run code, enable or disable retrieval, and delete tools.</li>
       <li><strong>Agents</strong> &mdash; review template validity/enabled state/version history, create new templates, and edit existing templates as new versions.</li>
       <li><strong>Knowledge Base</strong> &mdash; frontend page is not available yet.</li>
       <li><strong>Configuration</strong> &mdash; workspace settings, models and integrations. Frontend page not available yet.</li>
@@ -86,16 +87,124 @@
       <li>Use <strong>Enable</strong> or <strong>Disable</strong> to control active versions (invalid templates cannot be enabled).</li>
       <li>Use <strong>Delete</strong> to remove a template and all versions after confirmation.</li>
       <li>Select <strong>New agent</strong> to create a template, or <strong>Edit template</strong> on a row to create a new version from the latest saved template.</li>
+      <li>In <strong>Natural Language</strong>, write the complete workflow and select <strong>Build graph</strong>.</li>
+      <li>Open <strong>Visual Graph</strong> to review the equivalent components and routes. A synchronized natural-language mirror is shown under the canvas.</li>
+      <li>Drag a component's <strong>Connect</strong> button onto another component to create or replace its main route.</li>
+      <li>Use the smaller route handles when connecting a failure path or a particular condition branch.</li>
+      <li>Single-click and drag components to arrange them. Double-click a component to edit its details.</li>
+      <li>For <strong>Action</strong> components, choose <strong>HTTP service</strong> or <strong>Registered tool</strong>. Tool mode accepts tool name/id and tool input JSON; HTTP mode accepts method, URL, headers/body JSON, and timeout.</li>
       <li>Use <strong>Validate</strong> to run backend schema and graph checks; fix any returned validation errors.</li>
       <li>Save after validation to create a new version without overwriting prior history.</li>
       <li>When editing, compare your draft with the latest saved template in the read-only side-by-side panel.</li>
     </ol>
+    <p class="guide-callout">
+      Agent descriptions matter at runtime. The chat orchestrator uses enabled agent descriptions to decide when a
+      sub-agent should handle a request.
+    </p>
+  </section>
+
+  <section>
+    <h2>How routing is chosen</h2>
+    <ol>
+      <li>The orchestrator first checks whether your message directly names an enabled sub-agent.</li>
+      <li>If not, it compares your message with enabled sub-agent descriptions using semantic embeddings.</li>
+      <li>If semantic ranking is unavailable, it falls back to lexical overlap.</li>
+      <li>When a sub-agent is selected and completes successfully, its response is returned directly.</li>
+      <li>When no sub-agent is selected, Cents uses the default route (tool retrieval, document retrieval, or direct generation).</li>
+    </ol>
+    <p>
+      Tool retrieval and document retrieval are semantic. Disabled tools are excluded from retrieval, so only enabled
+      tools can be selected during execution.
+    </p>
+  </section>
+
+  <section>
+    <h2>Writing a sub-agent</h2>
+    <p>
+      A sub-agent is a saved, step-by-step job for Cents. It receives a user's message, follows the routes you
+      define, keeps useful results in temporary workflow state, and returns a final response. It only runs the
+      steps on the route selected for that request.
+    </p>
+
+    <h3>How a sub-agent runs</h3>
+    <ol>
+      <li>The entry step receives the user's message.</li>
+      <li>A listening step can extract useful details such as an account ID, date, or requested amount.</li>
+      <li>Conditions choose a route using those details.</li>
+      <li>Action steps can run HTTP calls or registered tools to look up or change information outside Cents.</li>
+      <li>An interrupt can pause the workflow, ask the user a question, and continue with the answer.</li>
+      <li>A thinking step can ask a language model to analyze the available information or write content.</li>
+      <li>A reply step returns the result and ends that route.</li>
+    </ol>
+    <p class="guide-callout">
+      <strong>Workflow state</strong> is the sub-agent's short-term working memory for one run. It carries parsed
+      values, tool results, and saved model outputs from one step to the next. It is not the model's permanent memory.
+    </p>
+
+    <h3>When language models are called</h3>
+    <p>
+      An LLM, or large language model, is the model that understands instructions and generates text. Sub-agent
+      authoring and execution use it at different times:
+    </p>
+    <ul>
+      <li><strong>When you select Build graph</strong>, Cents sends the complete authoring document to the configured LLM gateway. One authoring call translates it into components and routes; it does not run the new sub-agent or call its tools.</li>
+      <li><strong>When a run reaches <code>&#64;think</code></strong>, that step makes its own LLM call. Two thinking steps reached during one run make two separate calls.</li>
+      <li><strong>When <code>&#64;listen</code> uses LLM extraction</strong>, it makes a call to turn free-form text into named fields. A listening step configured for regular expressions does not call an LLM.</li>
+      <li><strong>Conditions, interrupts, replies, and route changes</strong> do not make LLM calls by themselves. A tool or HTTP call contacts the named service, which is separate from an LLM call.</li>
+    </ul>
+    <p class="guide-callout">
+      Model calls add processing time and may count toward provider usage. Cents sends them through the configured
+      LLM gateway. A thinking step receives its instructions and the state values explicitly referenced in its prompt;
+      it does not automatically receive every value in the workflow.
+    </p>
+
+    <h3>Parts of the authoring document</h3>
+    <p>
+      Write normal sentences in execution order. The first plain-language lines describe the job. Start structural
+      lines with an <code>&#64;</code> directive, put the instruction after the directive, and indent work that belongs
+      to a decision or failure route.
+    </p>
+    <pre><code [textContent]="workflowAuthoringExample"></code></pre>
+    <ul>
+      <li><strong>Name and purpose</strong> tell Cents what the whole sub-agent is meant to accomplish.</li>
+      <li><strong>Directives</strong> such as <code>&#64;listen</code> and <code>&#64;reply</code> identify the kind of step to create.</li>
+      <li><strong>The instruction after a directive</strong> explains what that particular step should do. Clear goals and expected results work better than vague requests.</li>
+      <li><strong>Indentation</strong> shows which steps belong inside an <code>&#64;if</code>, <code>&#64;else</code>, or <code>&#64;on_failure</code> route.</li>
+      <li><strong>State references</strong> such as <code>{{ stateReferenceExample }}</code> insert information produced by an earlier step.</li>
+      <li><code>&#64;start</code> identifies the first step when it is not clear from document order.</li>
+      <li><code>&#64;listen</code> extracts information from the user's message.</li>
+      <li><code>&#64;if</code>, <code>&#64;else if</code>, and <code>&#64;else</code> describe decisions.</li>
+      <li><code>&#64;call</code> invokes an HTTP service or registered tool. Tool calls should include the tool name or id and the input values you want passed to that tool.</li>
+      <li><code>&#64;interrupt</code> pauses and asks the user for information before continuing.</li>
+      <li><code>&#64;think</code> adds a language-model step, and <code>&#64;reply</code> ends a path with a response.</li>
+      <li><code>&#64;on_failure</code> describes recovery, while <code>&#64;guardrails</code> sets workflow limits and policies.</li>
+    </ul>
+
+    <h3>Parts of a thinking prompt</h3>
+    <p>
+      Double-click an <code>&#64;think</code> component in the visual graph to review its exact LLM settings. These
+      settings control one model call:
+    </p>
+    <ul>
+      <li><strong>Instructions</strong> are the task for the model. State the goal, any rules, and the desired answer format.</li>
+      <li><strong>Context</strong> comes from references such as <code>{{ stateReferenceExample }}</code>. At run time, Cents replaces each reference with the value saved by an earlier listening, tool, interrupt, or thinking step.</li>
+      <li><strong>Model type and model</strong> choose which configured language model handles the task.</li>
+      <li><strong>Temperature</strong> controls variation. Lower values favor consistent answers; higher values allow more variety.</li>
+      <li><strong>Maximum tokens</strong> limits how long the generated answer can be.</li>
+      <li><strong>Output key</strong> is the name used to save the answer in workflow state so later steps can use it.</li>
+      <li><strong>Failure route</strong> defines what happens if the model is unavailable or returns an unusable result.</li>
+    </ul>
+    <p>
+      For example, “Summarize the credit profile in three sentences, use only the supplied facts, and store the
+      answer as <code>recommendation</code>” gives the model a task, a boundary, an output format, and a name for the
+      result.
+    </p>
   </section>
 
   <section>
     <h2>API-backed capabilities</h2>
     <ul>
-      <li><strong>Backend service</strong> &mdash; authentication, conversations, chat streaming, configuration, document upload/list, tool register/list, and agent template/run APIs.</li>
+      <li><strong>Backend service</strong> &mdash; authentication, conversations, chat streaming, configuration, document upload/list, full tool management APIs, and agent template/run APIs.</li>
       <li><strong>LLM gateway</strong> &mdash; model discovery, text generation, and embeddings with folder-based model routing and optional API-key protection.</li>
       <li><strong>Frontend integration</strong> &mdash; browser app calls backend APIs through environment-based configuration and receives streaming responses for chat.</li>
     </ul>

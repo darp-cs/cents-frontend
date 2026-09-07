@@ -36,6 +36,11 @@ section h2 {
   font-size: 1.08rem;
 }
 
+section h3 {
+  margin-top: 0.45rem;
+  font-size: 0.98rem;
+}
+
 ul,
 ol {
   margin: 0;
@@ -55,6 +60,34 @@ code {
   background: var(--brand-soft);
   color: var(--brand-strong);
   font-size: 0.86em;
+}
+
+pre {
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: #f7f9fd;
+}
+
+pre code {
+  padding: 0;
+  background: transparent;
+  color: var(--text-strong);
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.guide-callout {
+  border-left: 3px solid var(--brand-strong);
+  padding: 0.65rem 0.75rem;
+  background: var(--brand-soft);
+  color: var(--text-muted);
+}
+
+.guide-callout strong {
+  color: var(--text-strong);
 }
 
 .footnote {

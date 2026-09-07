@@ -1,13 +1,20 @@
 <main class="agent-editor-page">
-  <header>
-    <div>
+  <header class="editor-header">
+    <div class="editor-title">
       <h1>{{ isEditing() ? 'Edit Agent Template' : 'New Agent Template' }}</h1>
-      <p>Author once in one canonical draft and switch modes without creating conflicting versions.</p>
+      <div class="editor-status" aria-label="Draft status">
+        <span class="status-chip" [class.dirty]="isDirty()">{{ isDirty() ? 'Unsaved changes' : 'Saved' }}</span>
+        <span class="status-chip">Version {{ baselineVersion() ?? 'new' }}</span>
+      </div>
     </div>
     <div class="header-actions">
-      <span class="status-chip" [class.dirty]="isDirty()">{{ isDirty() ? 'Dirty' : 'Clean' }}</span>
-      <span class="status-chip">Baseline v{{ baselineVersion() ?? 'new' }}</span>
       <button type="button" class="secondary" (click)="cancel()">Back to Agents</button>
+      <button type="button" class="secondary" [disabled]="!canValidate()" (click)="validateTemplate()">
+        {{ validationStatus() === 'validating' ? 'Validating...' : 'Validate' }}
+      </button>
+      <button type="button" class="save" data-testid="save-agent" [disabled]="!canSave()" (click)="saveTemplate()">
+        {{ isSaving() ? 'Saving...' : 'Save' }}
+      </button>
     </div>
   </header>
 
@@ -15,171 +22,179 @@
     <p class="error">{{ loadError() }}</p>
   }
 
-  <section class="editor-card">
+  <section class="editor-workspace">
     <div class="editor-toolbar">
-      <label for="agent-name">Agent name</label>
-      <input
-        id="agent-name"
-        type="text"
-        [value]="agentName()"
-        [disabled]="isEditing() || isBootstrapping() || isSaving()"
-        placeholder="e.g. ExpenseApproval"
-        (input)="onAgentNameInput($any($event.target).value)"
-      />
-    </div>
+      <label class="agent-name-field" for="agent-name">
+        <span>Agent name</span>
+        <input
+          id="agent-name"
+          type="text"
+          [value]="agentName()"
+          [disabled]="isEditing() || isBootstrapping() || isSaving()"
+          placeholder="e.g. ExpenseApproval"
+          (input)="onAgentNameInput($any($event.target).value)"
+        />
+      </label>
 
-    <div class="mode-tabs">
-      <button type="button" [class.active]="editorMode() === 'natural-language'" (click)="setEditorMode('natural-language')">
-        Natural Language
-      </button>
-      <button type="button" [class.active]="editorMode() === 'visual-graph'" (click)="setEditorMode('visual-graph')">
-        Visual Graph
-      </button>
-      <button type="button" [class.active]="editorMode() === 'advanced-json'" (click)="setEditorMode('advanced-json')">
-        Advanced JSON Preview
-      </button>
+      <label class="example-field" for="example-template">
+        <span>Example sub-agents</span>
+        <div class="example-controls">
+          <select
+            id="example-template"
+            [value]="selectedExampleId()"
+            [disabled]="isBootstrapping() || isSaving()"
+            (change)="onExampleSelectionInput($any($event.target).value)"
+          >
+            @for (example of examples; track example.id) {
+              <option [value]="example.id">{{ example.name }}</option>
+            }
+          </select>
+          <button type="button" class="secondary" [disabled]="isBootstrapping() || isSaving()" (click)="applySelectedExample()">
+            Load example
+          </button>
+        </div>
+      </label>
+
+      <nav class="mode-tabs" aria-label="Editor mode">
+        <button
+          type="button"
+          [class.active]="editorMode() === 'natural-language'"
+          [attr.aria-current]="editorMode() === 'natural-language' ? 'page' : null"
+          (click)="setEditorMode('natural-language')"
+        >
+          Natural Language
+        </button>
+        <button
+          type="button"
+          [class.active]="editorMode() === 'visual-graph'"
+          [attr.aria-current]="editorMode() === 'visual-graph' ? 'page' : null"
+          (click)="setEditorMode('visual-graph')"
+        >
+          Visual Graph
+        </button>
+        <button
+          type="button"
+          [class.active]="editorMode() === 'advanced-json'"
+          [attr.aria-current]="editorMode() === 'advanced-json' ? 'page' : null"
+          (click)="setEditorMode('advanced-json')"
+        >
+          JSON Preview
+        </button>
+      </nav>
     </div>
 
     @if (editorMode() === 'natural-language') {
       <section class="mode-panel natural-mode">
-        <h2>Workflow Narrative</h2>
-        <p class="mode-description">
-          This narrative mode edits canonical workflow metadata while the full execution graph is managed in Visual Graph mode.
-        </p>
-        <div class="field-grid">
-          <label>
-            Template version
-            <input
-              type="text"
-              [value]="template().template_version"
-              [disabled]="isBootstrapping() || isSaving()"
-              (input)="onTemplateVersionInput($any($event.target).value)"
-            />
-          </label>
-
-          <label>
-            Entry node
-            <select
-              [value]="template().entry_node"
-              [disabled]="isBootstrapping() || isSaving()"
-              (change)="onEntryNodeInput($any($event.target).value)"
+        <div class="mode-heading">
+          <div>
+            <span class="section-eyebrow">Natural language</span>
+            <h2>Workflow source</h2>
+          </div>
+          <div class="mode-actions">
+            @if (generationMessage()) {
+              <span class="entry-badge">Graph updated</span>
+            }
+            <button
+              type="button"
+              [disabled]="!canGenerate() || isBootstrapping() || isSaving()"
+              (click)="generateFromDescription()"
             >
-              @for (nodeId of nodeIds(); track nodeId) {
-                <option [value]="nodeId">{{ nodeId }}</option>
-              }
-            </select>
-          </label>
-
-          <label>
-            Guardrail max iterations
-            <input
-              type="number"
-              min="1"
-              [value]="template().guardrails.max_iterations"
-              [disabled]="isBootstrapping() || isSaving()"
-              (input)="onMaxIterationsInput($any($event.target).value)"
-            />
-          </label>
-
-          <label>
-            Judge override
-            <select
-              [value]="template().guardrails.judge_enabled_override === null ? 'null' : (template().guardrails.judge_enabled_override ? 'true' : 'false')"
-              [disabled]="isBootstrapping() || isSaving()"
-              (change)="onJudgeOverrideInput($any($event.target).value)"
-            >
-              <option value="null">inherit platform</option>
-              <option value="true">force enabled</option>
-              <option value="false">force disabled</option>
-            </select>
-          </label>
+              {{ isGenerating() ? 'Building graph...' : 'Build graph' }}
+            </button>
+          </div>
         </div>
 
-        <label>
-          Banned topic override (comma-separated)
-          <input
-            type="text"
-            [value]="(template().guardrails.banned_topics_override ?? []).join(', ')"
-            [disabled]="isBootstrapping() || isSaving()"
-            (input)="onBannedTopicsInput($any($event.target).value)"
-          />
-        </label>
+        <section class="workflow-source-editor" aria-label="Natural language workflow source">
+          <textarea
+            class="workflow-source"
+            rows="22"
+            aria-label="Workflow source"
+            spellcheck="true"
+            [value]="authoringPrompt()"
+            [placeholder]="workflowSourcePlaceholder"
+            [disabled]="isGenerating() || isBootstrapping() || isSaving()"
+            (input)="onAuthoringPromptInput($any($event.target).value)"
+            (keydown.control.enter)="generateFromDescription()"
+            (keydown.meta.enter)="generateFromDescription()"
+          ></textarea>
 
-        <div class="narrative-list">
-          @for (node of template().nodes; track node.id) {
-            <article class="narrative-node">
-              <div class="node-title-row">
-                <h3>{{ node.id }}</h3>
-                <span class="node-type">{{ nodeTypeIcon(node) }} {{ nodeTypeLabel(node) }}</span>
-              </div>
-              <textarea
-                [value]="node.description ?? ''"
-                [disabled]="isBootstrapping() || isSaving()"
-                rows="2"
-                (input)="onNodeDescriptionInput(node.id, $any($event.target).value)"
-              ></textarea>
-
-              @if (node.type === 'condition') {
-                <p class="transition-text">Branches: {{ branchEntries(node).length }}</p>
-              }
-              @if (node.type !== 'condition' && node.type !== 'terminal_response') {
-                <p class="transition-text">Next: {{ node.next }}</p>
-              }
-            </article>
+          @if (generationMessage()) {
+            <p class="success" aria-live="polite">{{ generationMessage() }}</p>
           }
-        </div>
 
-        @if (!isEditing()) {
-          <button type="button" class="secondary" (click)="resetToStarter()">Reset To Starter</button>
-        }
+          @if (generationError()) {
+            <p class="error" aria-live="polite">{{ generationError() }}</p>
+          }
+        </section>
       </section>
     }
 
     @if (editorMode() === 'visual-graph') {
       <section class="mode-panel graph-mode">
-        <h2>Workflow Canvas</h2>
+        <div class="mode-heading compact-heading">
+          <div>
+            <span class="section-eyebrow">Visual graph</span>
+            <h2>Workflow canvas</h2>
+          </div>
+        </div>
         <app-agent-workflow-canvas
           [graph]="graph()"
           [layout]="graphLayout()"
           [palette]="paletteItems()"
+          [availableTools]="availableTools()"
+          [toolsLoading]="toolsLoading()"
+          [toolsError]="toolsError()"
           [paletteLoading]="paletteLoading()"
           [paletteError]="paletteError()"
           [disabled]="isBootstrapping() || isSaving()"
+          [assistingNodeId]="assistingNodeId()"
+          [nodeAssistError]="nodeAssistError()"
           (graphChange)="onGraphChanged($event)"
           (layoutChange)="onGraphLayoutChanged($event)"
+          (nodeAssistRequested)="onNodeAssistRequested($event)"
         ></app-agent-workflow-canvas>
+
+        <section class="workflow-equivalent" aria-label="Natural language equivalent">
+          <div class="mode-heading compact-heading">
+            <div>
+              <span class="section-eyebrow">Equivalent source</span>
+              <h2>Natural language mirror</h2>
+            </div>
+          </div>
+          <textarea class="code-editor" [value]="graphEquivalentSource()" readonly spellcheck="false"></textarea>
+        </section>
       </section>
     }
 
     @if (editorMode() === 'advanced-json') {
-      <section class="mode-panel">
-        <div class="preview-actions">
-          <h2>Canonical JSON Preview (Read-only)</h2>
+      <section class="mode-panel json-mode">
+        <div class="mode-heading">
+          <div>
+            <span class="section-eyebrow">Advanced</span>
+            <h2>Canonical JSON</h2>
+          </div>
           <button type="button" class="secondary" (click)="copyJsonPreview()">Copy JSON</button>
         </div>
-        <textarea class="code-editor" [value]="draftJsonPreview()" readonly spellcheck="false"></textarea>
+
+        <div class="json-workspace">
+          <section class="json-pane">
+            <h3>Current draft</h3>
+            <textarea class="code-editor" [value]="draftJsonPreview()" readonly spellcheck="false"></textarea>
+          </section>
+
+          @if (isEditing() && baselineJson()) {
+            <section class="json-pane">
+              <h3>Latest saved version</h3>
+              <textarea class="code-editor" [value]="baselineJson()" readonly spellcheck="false"></textarea>
+            </section>
+          }
+        </div>
 
         @if (exportMessage()) {
           <p class="success">{{ exportMessage() }}</p>
         }
       </section>
     }
-
-    @if (isEditing() && baselineJson()) {
-      <section>
-        <h2>Latest Saved Version (Read-only)</h2>
-        <textarea class="code-editor baseline" [value]="baselineJson()" readonly spellcheck="false"></textarea>
-      </section>
-    }
-
-    <div class="action-row">
-      <button type="button" [disabled]="!canValidate()" (click)="validateTemplate()">
-        {{ validationStatus() === 'validating' ? 'Validating...' : 'Validate' }}
-      </button>
-      <button type="button" class="save" data-testid="save-agent" [disabled]="!canSave()" (click)="saveTemplate()">
-        {{ isSaving() ? 'Saving...' : 'Save' }}
-      </button>
-    </div>
 
     @if (validationStatus() === 'valid') {
       <p class="success">Template is valid and ready to save.</p>

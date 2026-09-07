@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, NgZone, OnChanges, Output, ViewChild, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Input, NgZone, Output, ViewChild, inject, signal } from '@angular/core';
 import {
   FCanvasChangeEvent,
   FCanvasComponent,
@@ -23,6 +23,11 @@ export interface AgentCanvasPaletteItem {
   description: string;
 }
 
+export interface AgentCanvasToolOption {
+  id: string;
+  name: string;
+}
+
 interface NodeViewModel {
   id: string;
   type: AgentNodeType;
@@ -39,6 +44,8 @@ interface ConnectionViewModel {
   id: string;
   kind: AgentGraphEdge['kind'];
   label: string;
+  displayLabel: string;
+  color: string;
   sourceNodeId: string;
   targetNodeId: string;
   branchLabel: string | null;
@@ -53,13 +60,16 @@ interface SourceConnectorParts {
   branchLabel?: string;
 }
 
+type ServiceCallMode = 'http' | 'tool';
+type ServiceCallMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
 const FALLBACK_LABELS: Record<AgentNodeType, string> = {
-  structured_parser: 'Structured Parser',
-  condition: 'Condition',
-  service_call: 'Service Call',
-  user_interrupt: 'User Interrupt',
-  llm_step: 'LLM Step',
-  terminal_response: 'Terminal Response',
+  structured_parser: 'Parse',
+  condition: 'Decision',
+  service_call: 'Action',
+  user_interrupt: 'Interrupt',
+  llm_step: 'Think',
+  terminal_response: 'Reply',
 };
 
 const FALLBACK_ICONS: Record<AgentNodeType, string> = {
@@ -71,42 +81,53 @@ const FALLBACK_ICONS: Record<AgentNodeType, string> = {
   terminal_response: 'END',
 };
 
+const NODE_ID_PREFIX_BY_TYPE: Record<AgentNodeType, string> = {
+  structured_parser: 'parse',
+  condition: 'decision',
+  service_call: 'action',
+  user_interrupt: 'interrupt',
+  llm_step: 'think',
+  terminal_response: 'reply',
+};
+
 @Component({
   selector: 'app-agent-workflow-canvas',
   standalone: true,
   imports: [FFlowModule],
   templateUrl: './agent-workflow-canvas.component.html',
   styleUrl: './agent-workflow-canvas.component.css',
-  providers: [provideFFlow(withA11y(), withConnectionFlow('click'))],
+  providers: [provideFFlow(withA11y(), withConnectionFlow('drag'))],
 })
-export class AgentWorkflowCanvasComponent implements OnChanges {
+export class AgentWorkflowCanvasComponent {
   private readonly zone = inject(NgZone);
 
   @Input({ required: true }) graph!: AgentTemplateGraph;
   @Input({ required: true }) layout!: GraphLayoutState;
   @Input() palette: AgentCanvasPaletteItem[] = [];
+  @Input() availableTools: AgentCanvasToolOption[] = [];
+  @Input() toolsLoading = false;
+  @Input() toolsError: string | null = null;
   @Input() paletteLoading = false;
   @Input() paletteError: string | null = null;
   @Input() disabled = false;
+  @Input() assistingNodeId: string | null = null;
+  @Input() nodeAssistError: string | null = null;
 
   @Output() graphChange = new EventEmitter<AgentTemplateGraph>();
   @Output() layoutChange = new EventEmitter<GraphLayoutState>();
+  @Output() nodeAssistRequested = new EventEmitter<{ nodeId: string; instruction: string }>();
 
   @ViewChild('canvas') private canvas?: FCanvasComponent;
 
   readonly selectedNodeIds = signal<string[]>([]);
   readonly selectedConnectionIds = signal<string[]>([]);
-  readonly assistToolsOpen = signal(false);
-  readonly editingBranchConnectionId = signal<string | null>(null);
-  readonly branchLabelDraft = signal('');
-
-  readonly connectionSource = signal('');
-  readonly connectionTarget = signal('');
+  readonly selectedNodeId = signal<string | null>(null);
+  readonly inspectedConnectionId = signal<string | null>(null);
+  readonly componentPickerOpen = signal(false);
   readonly connectionError = signal<string | null>(null);
-
-  ngOnChanges(): void {
-    this.syncConnectionComposerDefaults();
-  }
+  readonly nodeAssistDraftById = signal<Record<string, string>>({});
+  readonly nodeAssistLocalError = signal<string | null>(null);
+  readonly nodeConfigError = signal<string | null>(null);
 
   nodeViews(): NodeViewModel[] {
     return this.graph.nodes.map((node) => {
@@ -132,6 +153,8 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
       id: edge.id,
       kind: edge.kind,
       label: this.edgeLabel(edge),
+      displayLabel: this.edgeDisplayLabel(edge),
+      color: this.edgeColor(edge.kind),
       sourceNodeId: edge.source,
       targetNodeId: edge.target,
       branchLabel: edge.branchLabel ?? null,
@@ -141,39 +164,314 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     }));
   }
 
-  toggleAssistTools() {
-    this.assistToolsOpen.update((open) => !open);
+  selectedNode() {
+    const nodeId = this.selectedNodeId();
+    return nodeId ? (this.graph.nodes.find((node) => node.id === nodeId) ?? null) : null;
   }
 
-  isBranchEditing(connectionId: string) {
-    return this.editingBranchConnectionId() === connectionId;
+  inspectedConnection() {
+    const connectionId = this.inspectedConnectionId();
+    return connectionId ? this.connectionViews().find((connection) => connection.id === connectionId) ?? null : null;
   }
 
-  startBranchEdit(connectionId: string) {
-    const edge = this.graph.edges.find((candidate) => candidate.id === connectionId);
-    if (!edge || edge.kind !== 'branch' || this.disabled) {
+  outgoingConnections(nodeId: string) {
+    return this.connectionViews().filter((connection) => connection.sourceNodeId === nodeId);
+  }
+
+  toggleComponentPicker() {
+    this.componentPickerOpen.update((open) => !open);
+  }
+
+  openNodeEditor(nodeId: string) {
+    this.inspectedConnectionId.set(null);
+    this.selectedNodeId.set(nodeId);
+    this.selectedNodeIds.set([nodeId]);
+    this.componentPickerOpen.set(false);
+    this.nodeConfigError.set(null);
+  }
+
+  openConnectionEditor(connectionId: string) {
+    this.selectedNodeId.set(null);
+    this.selectedNodeIds.set([]);
+    this.selectedConnectionIds.set([connectionId]);
+    this.inspectedConnectionId.set(connectionId);
+    this.componentPickerOpen.set(false);
+  }
+
+  closeNodeEditor() {
+    this.selectedNodeId.set(null);
+    this.selectedNodeIds.set([]);
+    this.nodeConfigError.set(null);
+  }
+
+  closeConnectionEditor() {
+    this.inspectedConnectionId.set(null);
+    this.selectedConnectionIds.set([]);
+    this.nodeConfigError.set(null);
+  }
+
+  nodeTypeLabel(type: AgentNodeType) {
+    const paletteRecord = this.palette.find((item) => item.type === type);
+    return paletteRecord?.label ?? FALLBACK_LABELS[type];
+  }
+
+  updateNodeDescription(nodeId: string, description: string) {
+    this.updateGraphNode(nodeId, (node) => ({ ...node, description }));
+  }
+
+  updateNodeEditableText(nodeId: string, value: string) {
+    this.updateGraphNode(nodeId, (node) => {
+      switch (node.type) {
+        case 'structured_parser':
+          return node.config.strategy === 'llm'
+            ? { ...node, config: { ...node.config, llm_prompt_instructions: value } }
+            : node;
+        case 'condition':
+          return { ...node, config: { ...node.config, expression: value } };
+        case 'user_interrupt':
+          return { ...node, config: { ...node.config, prompt: value } };
+        case 'llm_step':
+          return { ...node, config: { ...node.config, system_prompt: value } };
+        case 'terminal_response':
+          return { ...node, config: { ...node.config, template: value } };
+        case 'service_call':
+          return node;
+      }
+    });
+  }
+
+  updateParserStrategy(nodeId: string, strategy: string) {
+    if (strategy !== 'regex' && strategy !== 'llm') {
       return;
     }
 
-    this.editingBranchConnectionId.set(connectionId);
-    this.branchLabelDraft.set(edge.branchLabel ?? 'default');
-    this.connectionError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'structured_parser' ? { ...node, config: { ...node.config, strategy } } : node
+    );
   }
 
-  cancelBranchEdit() {
-    this.editingBranchConnectionId.set(null);
-    this.branchLabelDraft.set('');
-    this.connectionError.set(null);
+  updateServiceUrl(nodeId: string, url: string) {
+    this.nodeConfigError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, url } } : node
+    );
   }
 
-  applyBranchEdit(connectionId: string) {
-    const edge = this.graph.edges.find((candidate) => candidate.id === connectionId);
-    if (!edge || edge.kind !== 'branch' || this.disabled) {
+  updateServiceMode(nodeId: string, mode: string) {
+    if (mode !== 'http' && mode !== 'tool') {
       return;
     }
 
-    const proposedLabel = this.branchLabelDraft().trim();
-    if (!proposedLabel) {
+    this.nodeConfigError.set(null);
+    this.updateGraphNode(nodeId, (node) => {
+      if (node.type !== 'service_call') {
+        return node;
+      }
+
+      if (mode === 'tool') {
+        return {
+          ...node,
+          config: {
+            ...node.config,
+            mode,
+            url: null,
+            tool_name: node.config.tool_name ?? null,
+            tool_id: node.config.tool_id ?? null,
+            tool_input_template: node.config.tool_input_template ?? {},
+          },
+        };
+      }
+
+      return {
+        ...node,
+        config: {
+          ...node.config,
+          mode,
+          url: node.config.url ?? 'https://api.example.com/service',
+          tool_name: null,
+          tool_id: null,
+          body_template: node.config.body_template ?? {},
+        },
+      };
+    });
+  }
+
+  updateServiceMethod(nodeId: string, method: string) {
+    if (method !== 'GET' && method !== 'POST' && method !== 'PUT' && method !== 'PATCH' && method !== 'DELETE') {
+      return;
+    }
+
+    this.nodeConfigError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, method: method as ServiceCallMethod } } : node
+    );
+  }
+
+  updateServiceToolName(nodeId: string, toolName: string) {
+    this.nodeConfigError.set(null);
+    const normalized = toolName.trim();
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, tool_name: normalized || null } } : node
+    );
+  }
+
+  updateServiceToolId(nodeId: string, toolId: string) {
+    this.nodeConfigError.set(null);
+    const normalized = toolId.trim();
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, tool_id: normalized || null } } : node
+    );
+  }
+
+  updateServiceTimeout(nodeId: string, rawValue: string) {
+    this.nodeConfigError.set(null);
+    const normalized = rawValue.trim();
+    if (!normalized) {
+      this.updateGraphNode(nodeId, (node) =>
+        node.type === 'service_call' ? { ...node, config: { ...node.config, timeout_seconds: null } } : node
+      );
+      return;
+    }
+
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      this.nodeConfigError.set('Timeout must be a positive number of seconds.');
+      return;
+    }
+
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call'
+        ? { ...node, config: { ...node.config, timeout_seconds: Math.floor(parsed) } }
+        : node
+    );
+  }
+
+  updateServiceAllowUnsafe(nodeId: string, allowUnsafe: boolean) {
+    this.nodeConfigError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, allow_unsafe_destination: allowUnsafe } } : node
+    );
+  }
+
+  updateServiceHeadersTemplate(nodeId: string, rawValue: string) {
+    const parsed = this.parseJsonStringMap(rawValue, 'Headers template must be a JSON object with string values.');
+    if (!parsed) {
+      return;
+    }
+
+    this.nodeConfigError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, headers_template: parsed } } : node
+    );
+  }
+
+  updateServiceBodyTemplate(nodeId: string, rawValue: string) {
+    const parsed = this.parseJsonObjectOrNull(rawValue, 'Body template must be a JSON object or null.');
+    if (parsed === undefined) {
+      return;
+    }
+
+    this.nodeConfigError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, body_template: parsed } } : node
+    );
+  }
+
+  updateServiceToolInputTemplate(nodeId: string, rawValue: string) {
+    const parsed = this.parseJsonObject(rawValue, 'Tool input template must be a JSON object.');
+    if (!parsed) {
+      return;
+    }
+
+    this.nodeConfigError.set(null);
+    this.updateGraphNode(nodeId, (node) =>
+      node.type === 'service_call' ? { ...node, config: { ...node.config, tool_input_template: parsed } } : node
+    );
+  }
+
+  serviceHeadersTemplateText(nodeId: string): string {
+    const serviceNode = this.findServiceCallNode(nodeId);
+    return JSON.stringify(serviceNode?.config.headers_template ?? {}, null, 2);
+  }
+
+  serviceBodyTemplateText(nodeId: string): string {
+    const serviceNode = this.findServiceCallNode(nodeId);
+    const value = serviceNode?.config.body_template ?? {};
+    return JSON.stringify(value, null, 2);
+  }
+
+  serviceToolInputTemplateText(nodeId: string): string {
+    const serviceNode = this.findServiceCallNode(nodeId);
+    return JSON.stringify(serviceNode?.config.tool_input_template ?? {}, null, 2);
+  }
+
+  serviceModeOptions(): ServiceCallMode[] {
+    return ['http', 'tool'];
+  }
+
+  serviceMethodOptions(): ServiceCallMethod[] {
+    return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+  }
+
+  toolOptionsForNode(nodeId: string): AgentCanvasToolOption[] {
+    const normalizedTools = this.availableTools
+      .map((tool) => ({
+        id: tool.id,
+        name: tool.name.trim(),
+      }))
+      .filter((tool) => tool.name.length > 0)
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    const serviceNode = this.findServiceCallNode(nodeId);
+    const configuredName = serviceNode?.config.tool_name?.trim() ?? '';
+    if (!configuredName) {
+      return normalizedTools;
+    }
+
+    if (normalizedTools.some((tool) => tool.name === configuredName)) {
+      return normalizedTools;
+    }
+
+    return [
+      {
+        id: `configured:${configuredName}`,
+        name: configuredName,
+      },
+      ...normalizedTools,
+    ];
+  }
+
+  nodeAssistDraft(nodeId: string) {
+    return this.nodeAssistDraftById()[nodeId] ?? '';
+  }
+
+  updateNodeAssistDraft(nodeId: string, value: string) {
+    this.nodeAssistLocalError.set(null);
+    this.nodeAssistDraftById.update((state) => ({
+      ...state,
+      [nodeId]: value,
+    }));
+  }
+
+  requestNodeAssist(nodeId: string) {
+    if (this.disabled || this.assistingNodeId !== null) {
+      return;
+    }
+
+    const instruction = this.nodeAssistDraft(nodeId).trim();
+    if (!instruction) {
+      this.nodeAssistLocalError.set('Describe what to change before applying AI draft.');
+      return;
+    }
+
+    this.nodeAssistLocalError.set(null);
+    this.nodeAssistRequested.emit({ nodeId, instruction });
+  }
+
+  updateBranchLabel(connectionId: string, label: string) {
+    const edge = this.graph.edges.find((candidate) => candidate.id === connectionId);
+    const proposedLabel = label.trim();
+    if (!edge || edge.kind !== 'branch' || !proposedLabel || this.disabled) {
       this.connectionError.set('Branch labels cannot be empty.');
       return;
     }
@@ -191,8 +489,6 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     }
 
     this.connectionError.set(null);
-    this.editingBranchConnectionId.set(null);
-    this.branchLabelDraft.set('');
     this.replaceEdgeSemantics(
       edge.id,
       { sourceNodeId: edge.source, kind: 'branch', branchLabel: proposedLabel },
@@ -202,40 +498,23 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     );
   }
 
-  deleteEdgeById(connectionId: string) {
-    this.removeEdgesByIds([connectionId]);
-  }
-
-  sourceConnectorOptions() {
-    const options: Array<{ id: string; label: string }> = [];
-
-    for (const node of this.graph.nodes) {
-      const label = FALLBACK_LABELS[node.type];
-      if (this.supportsNextEdge(node.type)) {
-        options.push({
-          id: this.nextConnectorId(node.id),
-          label: `${node.id} (${label}) -> next`,
-        });
-      }
-
-      if (this.supportsFailureEdge(node.type)) {
-        options.push({
-          id: this.failureConnectorId(node.id),
-          label: `${node.id} (${label}) -> on_failure`,
-        });
-      }
-
-      if (node.type === 'condition') {
-        for (const branch of this.conditionBranchOutputs(node.id)) {
-          options.push({
-            id: branch.connectorId,
-            label: `${node.id} (${label}) -> branch:${branch.label}`,
-          });
-        }
-      }
+  updateConnectionTarget(connectionId: string, targetNodeId: string) {
+    const edge = this.graph.edges.find((candidate) => candidate.id === connectionId);
+    if (!edge || !targetNodeId || this.disabled) {
+      return;
     }
 
-    return options;
+    this.replaceEdgeSemantics(
+      edge.id,
+      { sourceNodeId: edge.source, kind: edge.kind, branchLabel: edge.branchLabel },
+      targetNodeId,
+      true,
+      false
+    );
+  }
+
+  deleteEdgeById(connectionId: string) {
+    this.removeEdgesByIds([connectionId]);
   }
 
   targetNodeOptions() {
@@ -281,6 +560,9 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     };
 
     const nextLayout = this.withNodeLayout(nextNodeId, this.nextPlacement(), true);
+    this.selectedNodeId.set(nextNodeId);
+    this.selectedNodeIds.set([nextNodeId]);
+    this.componentPickerOpen.set(false);
     this.emitLayout(nextLayout);
     this.emitGraph(nextGraph);
   }
@@ -329,6 +611,10 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
 
     const nextLayoutById = { ...this.layout.nodeLayoutById };
     delete nextLayoutById[nodeId];
+
+    if (this.selectedNodeId() === nodeId) {
+      this.closeNodeEditor();
+    }
 
     this.emitLayout({
       ...this.layout,
@@ -479,6 +765,8 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
   clearSelection() {
     this.selectedNodeIds.set([]);
     this.selectedConnectionIds.set([]);
+    this.selectedNodeId.set(null);
+    this.inspectedConnectionId.set(null);
 
     const nextLayoutById = Object.fromEntries(
       Object.entries(this.layout.nodeLayoutById).map(([nodeId, nodeLayout]) => [
@@ -512,16 +800,6 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     );
   }
 
-  createConnectionWithoutPointer() {
-    if (!this.connectionSource() || !this.connectionTarget()) {
-      this.connectionError.set('Choose source and target before creating a connection.');
-      return;
-    }
-
-    this.connectionError.set(null);
-    this.upsertEdgeByConnectors(this.connectionSource(), this.targetConnectorId(this.connectionTarget()));
-  }
-
   sourceConnectorId(edge: AgentGraphEdge) {
     if (edge.kind === 'next') {
       return this.nextConnectorId(edge.source);
@@ -538,6 +816,10 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     return `${nodeId}::in`;
   }
 
+  outletConnectorId(nodeId: string) {
+    return `${nodeId}::outlet`;
+  }
+
   nextConnectorId(nodeId: string) {
     return `${nodeId}::out::next`;
   }
@@ -548,19 +830,6 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
 
   branchConnectorId(nodeId: string, label: string) {
     return `${nodeId}::out::branch::${encodeURIComponent(label)}`;
-  }
-
-  private syncConnectionComposerDefaults() {
-    const sources = this.sourceConnectorOptions();
-    const targets = this.targetNodeOptions();
-
-    if (!sources.some((source) => source.id === this.connectionSource())) {
-      this.connectionSource.set(sources[0]?.id ?? '');
-    }
-
-    if (!targets.some((target) => target.id === this.connectionTarget())) {
-      this.connectionTarget.set(targets[0]?.id ?? '');
-    }
   }
 
   private upsertEdgeByConnectors(sourceConnectorId: string, targetConnectorId: string) {
@@ -621,6 +890,9 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
 
     if (edgeId && nextEdge.id !== edgeId) {
       this.selectedConnectionIds.update((connectionIds) => connectionIds.map((id) => (id === edgeId ? nextEdge.id : id)));
+      if (this.inspectedConnectionId() === edgeId) {
+        this.inspectedConnectionId.set(nextEdge.id);
+      }
     }
 
     this.emitGraph({
@@ -664,9 +936,9 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
 
     const toDelete = new Set(edgeIds);
     this.selectedConnectionIds.update((connectionIds) => connectionIds.filter((id) => !toDelete.has(id)));
-
-    if (edgeIds.includes(this.editingBranchConnectionId() ?? '')) {
-      this.cancelBranchEdit();
+    const inspectedConnectionId = this.inspectedConnectionId();
+    if (inspectedConnectionId && toDelete.has(inspectedConnectionId)) {
+      this.inspectedConnectionId.set(null);
     }
 
     this.emitGraph({
@@ -676,7 +948,16 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
   }
 
   private parseSourceConnector(connectorId: string): SourceConnectorParts | null {
+    const explicitNodeSource = this.resolveNodeAsSource(connectorId);
+    if (explicitNodeSource) {
+      return explicitNodeSource;
+    }
+
     const tokens = connectorId.split('::');
+    if (tokens.length === 2 && tokens[1] === 'outlet') {
+      return this.resolveNodeAsSource(tokens[0]);
+    }
+
     if (tokens.length < 3 || tokens[1] !== 'out') {
       return null;
     }
@@ -706,6 +987,10 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
   }
 
   private parseTargetConnector(connectorId: string): string | null {
+    if (this.graph.nodes.some((node) => node.id === connectorId)) {
+      return connectorId;
+    }
+
     const tokens = connectorId.split('::');
     if (tokens.length !== 2 || tokens[1] !== 'in') {
       return null;
@@ -714,12 +999,143 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
     return tokens[0] || null;
   }
 
+  private resolveNodeAsSource(nodeId: string): SourceConnectorParts | null {
+    const node = this.graph.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) {
+      return null;
+    }
+
+    if (node.type === 'condition') {
+      return {
+        sourceNodeId: node.id,
+        kind: 'branch',
+        branchLabel: this.preferredBranchLabel(node.id),
+      };
+    }
+
+    if (this.supportsNextEdge(node.type)) {
+      return {
+        sourceNodeId: node.id,
+        kind: 'next',
+      };
+    }
+
+    return null;
+  }
+
+  private preferredBranchLabel(nodeId: string): string {
+    const labels = this.graph.edges
+      .filter((edge) => edge.source === nodeId && edge.kind === 'branch')
+      .map((edge) => edge.branchLabel ?? 'default');
+
+    if (labels.includes('default')) {
+      return 'default';
+    }
+
+    return labels[0] ?? 'default';
+  }
+
+  private findServiceCallNode(nodeId: string) {
+    const node = this.graph.nodes.find((candidate) => candidate.id === nodeId);
+    return node?.type === 'service_call' ? node : null;
+  }
+
+  private parseJsonObject(rawValue: string, message: string): Record<string, unknown> | null {
+    const normalized = rawValue.trim();
+    if (!normalized) {
+      return {};
+    }
+
+    try {
+      const parsed: unknown = JSON.parse(normalized);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // falls through to error handling below.
+    }
+
+    this.nodeConfigError.set(message);
+    return null;
+  }
+
+  private parseJsonStringMap(rawValue: string, message: string): Record<string, string> | null {
+    const parsedObject = this.parseJsonObject(rawValue, message);
+    if (!parsedObject) {
+      return null;
+    }
+
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsedObject)) {
+      if (value !== null && typeof value === 'object') {
+        this.nodeConfigError.set(message);
+        return null;
+      }
+
+      normalized[String(key)] = value === undefined ? '' : String(value);
+    }
+
+    return normalized;
+  }
+
+  private parseJsonObjectOrNull(rawValue: string, message: string): Record<string, unknown> | null | undefined {
+    const normalized = rawValue.trim();
+    if (!normalized) {
+      return {};
+    }
+
+    if (normalized === 'null') {
+      return null;
+    }
+
+    const parsed = this.parseJsonObject(normalized, message);
+    if (!parsed) {
+      return undefined;
+    }
+    return parsed;
+  }
+
   private edgeLabel(edge: AgentGraphEdge) {
     if (edge.kind === 'branch') {
       return `branch:${edge.branchLabel ?? 'default'}`;
     }
 
     return edge.kind;
+  }
+
+  private edgeDisplayLabel(edge: AgentGraphEdge) {
+    if (edge.kind === 'on_failure') {
+      return 'If it fails';
+    }
+
+    if (edge.kind === 'branch') {
+      return edge.branchLabel === 'default' ? 'Otherwise' : `If ${edge.branchLabel ?? 'condition'}`;
+    }
+
+    return 'Next';
+  }
+
+  private edgeColor(kind: AgentGraphEdge['kind']) {
+    if (kind === 'on_failure') {
+      return '#b94718';
+    }
+
+    if (kind === 'branch') {
+      return '#5c48bd';
+    }
+
+    return '#16744a';
+  }
+
+  private updateGraphNode(nodeId: string, updater: (node: AgentGraphNode) => AgentGraphNode) {
+    if (this.disabled) {
+      return;
+    }
+
+    this.emitGraph({
+      ...this.graph,
+      nodes: this.graph.nodes.map((node) => (node.id === nodeId ? updater(node) : node)),
+    });
   }
 
   private supportsNextEdge(type: AgentNodeType) {
@@ -831,7 +1247,7 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
   }
 
   private uniqueNodeId(type: AgentNodeType) {
-    const normalized = type.replace(/[^a-zA-Z0-9_]/g, '_');
+    const normalized = NODE_ID_PREFIX_BY_TYPE[type];
     const existing = new Set(this.graph.nodes.map((node) => node.id));
     let index = 1;
     let candidate = `${normalized}_${index}`;
@@ -863,10 +1279,12 @@ export class AgentWorkflowCanvasComponent implements OnChanges {
   }
 
   private nextPlacement() {
-    const index = this.graph.nodes.length;
+    const entryNodeLayout = this.layout.nodeLayoutById[this.graph.entryNodeId] ?? this.defaultNodeLayout();
+    // Keep growth top-down from the entry column so new steps stack naturally.
+    const lowestY = Math.max(entryNodeLayout.y, ...Object.values(this.layout.nodeLayoutById).map((node) => node.y));
     return {
-      x: 90 + (index % 3) * 290,
-      y: 80 + Math.floor(index / 3) * 220,
+      x: entryNodeLayout.x,
+      y: lowestY + 180,
     };
   }
 

@@ -1,138 +1,220 @@
 .agent-editor-page {
-  width: min(1200px, 100%);
-  margin: 1.5rem auto;
-  padding: 0 1rem 1.5rem;
+  width: 100%;
+  min-height: 100dvh;
+  padding: 0.75rem clamp(0.75rem, 1.5vw, 1.5rem) 1.25rem;
   display: grid;
-  gap: 1rem;
+  align-content: start;
+  gap: 0.75rem;
 }
 
-header {
+.editor-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  padding: 0.95rem 1rem;
-  border: 1px solid var(--border-soft);
-  border-radius: 18px;
-  background: linear-gradient(120deg, #edf3ff, #fff0f7);
-  box-shadow: var(--shadow-1);
+  padding: 0.35rem 0 0.75rem;
+  border-bottom: 1px solid var(--border-soft);
 }
 
-header h1 {
-  font-size: 1.4rem;
+.editor-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.editor-card {
-  border: 1px solid var(--border-soft);
-  border-radius: 18px;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--shadow-1);
+.editor-header h1 {
+  font-size: 1.2rem;
+  line-height: 1.25;
+}
+
+.editor-status,
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.header-actions button {
+  min-height: 2.25rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 7px;
+}
+
+.editor-workspace {
+  min-width: 0;
   display: grid;
-  gap: 0.9rem;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.65rem;
 }
 
 .editor-toolbar {
-  display: grid;
-  gap: 0.35rem;
+  display: flex;
+  align-items: end;
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+  min-width: 0;
+  border-bottom: 1px solid var(--border-soft);
 }
 
-.editor-toolbar label {
+.agent-name-field {
+  flex: 0 1 18rem;
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.55rem;
+}
+
+.example-field {
+  flex: 0 1 24rem;
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.55rem;
+}
+
+.agent-name-field span {
   font-size: 0.84rem;
   color: var(--text-muted);
+}
+
+.example-field span {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.agent-name-field input {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 7px;
+}
+
+.example-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+}
+
+.example-controls select {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 7px;
+}
+
+.example-controls button {
+  min-height: 2.35rem;
+  padding: 0.42rem 0.65rem;
+  border-radius: 7px;
 }
 
 .mode-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-self: stretch;
+  align-items: end;
+  gap: 0.2rem;
 }
 
 .mode-tabs button {
-  background: #f2f6ff;
-  border-color: #c6d7fb;
-  color: #123370;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.75rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.mode-tabs button:hover:not(:disabled) {
+  transform: none;
+  background: var(--surface-2);
+  color: var(--text-strong);
   box-shadow: none;
 }
 
 .mode-tabs button.active {
-  background: linear-gradient(140deg, #d9e8ff, #f8fbff);
-  border-color: #9dc0ff;
+  border-bottom-color: var(--brand);
+  background: transparent;
+  color: var(--brand-strong);
 }
 
 .mode-panel {
-  border: 1px solid var(--border-soft);
-  border-radius: 14px;
-  padding: 0.8rem;
-  background: #fcfdff;
+  min-width: 0;
   display: grid;
-  gap: 0.75rem;
+  align-content: start;
+  gap: 0.6rem;
 }
 
-.mode-description {
-  margin: 0;
-  font-size: 0.84rem;
-  color: #4f5f7d;
-}
-
-.field-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.field-grid label,
-.mode-panel label {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.narrative-list {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.narrative-node {
-  border: 1px solid #dbe6fd;
-  border-radius: 12px;
-  padding: 0.7rem;
-  background: #ffffff;
-  display: grid;
-  gap: 0.45rem;
-}
-
-.node-title-row {
+.mode-heading {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+}
+
+.section-eyebrow {
+  color: #557091;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mode-heading h2 {
+  margin-top: 0.05rem;
+  font-size: 1rem;
+}
+
+.mode-heading.compact-heading {
+  min-height: 2rem;
+}
+
+.mode-actions {
+  display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.node-type {
-  font-size: 0.74rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: #2d558f;
-  background: #e7f0ff;
-  border: 1px solid #c3d7ff;
-  border-radius: 999px;
-  padding: 0.16rem 0.5rem;
+.mode-actions button,
+.mode-heading > button {
+  min-height: 2.25rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 7px;
 }
 
-.transition-text {
-  margin: 0;
-  font-size: 0.82rem;
-  color: #56647f;
+.entry-badge {
+  border: 1px solid #b7d1f2;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  background: #edf5ff;
+  color: #234f83;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.workflow-source-editor {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.workflow-source {
+  width: 100%;
+  min-height: max(30rem, calc(100dvh - 15rem));
+  padding: 1rem clamp(1rem, 2vw, 1.5rem);
+  border-color: #b8c8de;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #18283d;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  resize: vertical;
 }
 
 .code-editor {
   width: 100%;
-  min-height: 430px;
+  min-height: max(28rem, calc(100dvh - 18rem));
   padding: 0.85rem;
   border: 1px solid var(--border-soft);
-  border-radius: 12px;
+  border-radius: 7px;
   background: #fbfcff;
   color: #17233d;
   font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
@@ -140,21 +222,30 @@ header h1 {
   resize: vertical;
 }
 
-.code-editor.baseline {
-  min-height: 240px;
+.json-workspace {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(28rem, 100%), 1fr));
+  gap: 0.75rem;
 }
 
-.preview-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.6rem;
+.json-pane {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
 }
 
-.action-row {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
+.json-pane h3 {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.workflow-equivalent {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.workflow-equivalent .code-editor {
+  min-height: 14rem;
 }
 
 button.secondary {
@@ -170,7 +261,7 @@ button.save {
 
 .validation-block {
   border: 1px solid var(--border-soft);
-  border-radius: 12px;
+  border-radius: 7px;
   padding: 0.7rem 0.8rem;
   background: var(--surface-1);
 }
@@ -201,9 +292,9 @@ button.save {
   border: 1px solid #c8d9fa;
   background: #f4f8ff;
   color: #2a4b80;
-  border-radius: 999px;
-  padding: 0.2rem 0.65rem;
-  font-size: 0.76rem;
+  border-radius: 5px;
+  padding: 0.16rem 0.45rem;
+  font-size: 0.7rem;
   font-weight: 600;
 }
 
@@ -213,36 +304,67 @@ button.save {
   color: #7e5b05;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-}
-
 @media (max-width: 960px) {
-  .field-grid {
-    grid-template-columns: 1fr;
+  .editor-header {
+    align-items: flex-start;
+  }
+
+  .editor-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.4rem;
   }
 }
 
 @media (max-width: 720px) {
-  header {
+  .agent-editor-page {
+    padding-inline: 0.6rem;
+  }
+
+  .editor-header,
+  .editor-toolbar {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .action-row {
-    width: 100%;
-    flex-direction: column;
-  }
-
-  .action-row button {
+  .header-actions,
+  .agent-name-field,
+  .example-field,
+  .mode-tabs {
     width: 100%;
   }
 
-  .preview-actions {
-    flex-direction: column;
+  .header-actions button {
+    flex: 1 1 auto;
+  }
+
+  .agent-name-field {
+    flex-basis: auto;
+  }
+
+  .example-field {
+    flex-basis: auto;
+  }
+
+  .example-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-heading {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mode-actions {
+    width: 100%;
+  }
+
+  .mode-actions button {
+    margin-left: auto;
+  }
+
+  .workflow-source,
+  .code-editor {
+    min-height: 28rem;
   }
 }
